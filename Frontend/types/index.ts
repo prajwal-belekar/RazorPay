@@ -1,0 +1,262 @@
+export type PaymentMethod = 'UPI' | 'Cards' | 'Net Banking' | 'Wallet';
+
+export type FailureReason = 
+  | 'Bank Timeout' 
+  | 'Insufficient Funds' 
+  | 'Card Decline' 
+  | 'Network Drop' 
+  | 'Authentication Failed' 
+  | 'Limit Exceeded';
+
+export type StrategyType = 
+  | 'Retry' 
+  | 'Payment Link' 
+  | 'Reminder' 
+  | 'Retry + Payment Link'
+  | 'Smart Schedule';
+
+export type RecoveryStatus = 
+  | 'At Risk' 
+  | 'Analyzing' 
+  | 'Simulating' 
+  | 'Approved' 
+  | 'Recovered' 
+  | 'Failed' 
+  | 'Blocked' 
+  | 'Pending Approval';
+
+export interface Customer {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  tier: 'VIP' | 'Returning' | 'New' | 'Regular';
+  historicalSuccessRate: number;
+}
+
+export interface Transaction {
+  id: string;
+  customerId: string;
+  customerName: string;
+  amount: number;
+  currency: string;
+  paymentMethod: PaymentMethod;
+  status: 'Success' | 'Failed' | 'Recovered' | 'Pending';
+  failureReason?: FailureReason;
+  failureCode?: string;
+  createdAt: string;
+  updatedAt: string;
+  gateway: string;
+  recoveryId?: string;
+}
+
+export interface StrategyOption {
+  type: StrategyType;
+  title: string;
+  probability: number; // 0-100
+  expectedRecovery: number;
+  confidence: number; // 0-100
+  recommendedDelayMinutes?: number;
+  isAiRecommended?: boolean;
+  explanation: string;
+  roi: number; // multiplier e.g. 4.2x
+}
+
+export interface ActionFirewallCheck {
+  id: string;
+  name: string;
+  description: string;
+  status: 'PASSED' | 'FAILED' | 'WARNING';
+  policyValue: string;
+  actualValue: string;
+}
+
+export interface FirewallResult {
+  approved: boolean;
+  statusMessage: string;
+  checks: ActionFirewallCheck[];
+  evaluatedAt: string;
+  policyVersion: string;
+}
+
+export interface TimelineEvent {
+  id: string;
+  timestamp: string;
+  component: 'Detection Agent' | 'Prediction Engine' | 'Ollama AI' | 'Policy Firewall' | 'Razorpay Engine' | 'Blockchain Vault' | 'Learning Agent';
+  status: 'info' | 'success' | 'warning' | 'error';
+  title: string;
+  description: string;
+  metadata?: Record<string, string | number>;
+}
+
+export interface BlockchainProof {
+  proofId: string;
+  transactionId: string;
+  amount: number;
+  strategy: StrategyType;
+  policyVersion: string;
+  proofHash: string;
+  policyHash: string;
+  timestamp: string;
+  blockNumber: number;
+  verified: boolean;
+  txHash: string;
+  network: string;
+}
+
+export interface RecoveryCase {
+  id: string;
+  transactionId: string;
+  customer: Customer;
+  amount: number;
+  paymentMethod: PaymentMethod;
+  failureReason: FailureReason;
+  recoveryProbability: number;
+  expectedRecovery: number;
+  strategy: StrategyType;
+  aiConfidence: number;
+  status: RecoveryStatus;
+  createdAt: string;
+  strategies: StrategyOption[];
+  explanation: string;
+  firewallResult: FirewallResult;
+  timeline: TimelineEvent[];
+  proof?: BlockchainProof;
+}
+
+export interface Agent {
+  id: string;
+  name: string;
+  role: 'Detection' | 'Prediction' | 'Recovery' | 'Simulation' | 'Policy' | 'Learning';
+  status: 'ACTIVE' | 'LEARNING' | 'IDLE' | 'BUSY';
+  currentTask: string;
+  processedCount: number;
+  successRate: number;
+  avgLatencyMs: number;
+  lastAction: string;
+  lastActionTime: string;
+  model: string;
+}
+
+export interface AgentActivityLog {
+  id: string;
+  timestamp: string;
+  agentName: string;
+  agentRole: string;
+  message: string;
+  status: 'success' | 'info' | 'warning' | 'error';
+  metadata?: Record<string, unknown>;
+}
+
+export interface Anomaly {
+  id: string;
+  title: string;
+  paymentMethod: PaymentMethod;
+  previousRate: number;
+  currentRate: number;
+  percentageChange: number;
+  revenueAtRisk: number;
+  confidence: number;
+  detectedAt: string;
+  severity: 'HIGH' | 'CRITICAL' | 'MEDIUM';
+  recommendedAction: string;
+  affectedCount: number;
+}
+
+export interface SimulationConfig {
+  revenueAtRisk: number;
+  horizonDays: number;
+  retryCount: number;
+  selectedStrategies: StrategyType[];
+}
+
+export interface SimulationResult {
+  strategy: StrategyType;
+  expectedRecovery: number;
+  probability: number;
+  expectedRoi: number;
+  timeToRecoverHours: number;
+  successRateByMethod: Record<PaymentMethod, number>;
+  isRecommended?: boolean;
+}
+
+export interface PolicyRule {
+  id: string;
+  key: string;
+  title: string;
+  description: string;
+  value: number | string | boolean;
+  type: 'number' | 'currency' | 'boolean' | 'select' | 'minutes';
+  unit?: string;
+  category: 'Autonomous' | 'Risk' | 'Timing' | 'Limits';
+}
+
+export interface PolicySet {
+  version: string;
+  status: 'Active' | 'Draft' | 'Archived';
+  lastUpdated: string;
+  hash: string;
+  rules: PolicyRule[];
+}
+
+export interface NotificationItem {
+  id: string;
+  title: string;
+  message: string;
+  timestamp: string;
+  type: 'anomaly' | 'recovery' | 'blockchain' | 'policy' | 'system';
+  read: boolean;
+  actionUrl?: string;
+  actionText?: string;
+}
+
+export interface MerchantDNA {
+  bestStrategy: StrategyType;
+  bestRetryWindow: string;
+  bestCustomerSegment: string;
+  bestPaymentMethod: PaymentMethod;
+  methodRates: Record<PaymentMethod, number>;
+  topFactors: { factor: string; impact: number }[];
+  learningDataPoints: number;
+  modelAccuracy: number;
+  lastTrainedAt: string;
+}
+
+export interface DashboardMetrics {
+  revenueAtRisk: number;
+  revenueAtRiskChange: number;
+  revenueRecovered: number;
+  revenueRecoveredChange: number;
+  recoveryRate: number;
+  recoveryRateChange: number;
+  opportunitiesCount: number;
+  opportunitiesChange: number;
+  aiActionsCount: number;
+  policyComplianceRate: number;
+}
+
+export interface CopilotMessage {
+  id: string;
+  sender: 'user' | 'assistant';
+  timestamp: string;
+  text: string;
+  metricCard?: {
+    value: string;
+    label: string;
+    change?: string;
+  };
+  chartData?: { name: string; value: number; benchmark?: number }[];
+  tableData?: {
+    headers: string[];
+    rows: (string | number)[][];
+  };
+  actions?: { label: string; action: string }[];
+}
+
+export interface AIResponse<T = unknown> {
+  success: boolean;
+  data: T;
+  latencyMs: number;
+  model: string;
+  timestamp: string;
+}
