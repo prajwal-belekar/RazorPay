@@ -1,12 +1,20 @@
-export type PaymentMethod = 'UPI' | 'Cards' | 'Net Banking' | 'Wallet';
+export interface Payment {
+  id: number;
+  amount: number;
+  failure_reason: string;
+  customer_type: string;
+  recommended_action: string | null;
+  reason: string | null;
+  confidence: number | null;
+  decision_source: string | null;
+  recovery_status: string | null;
+  retry_count: number;
+  created_at: string | null;
+}
 
-export type FailureReason = 
-  | 'Bank Timeout' 
-  | 'Insufficient Funds' 
-  | 'Card Decline' 
-  | 'Network Drop' 
-  | 'Authentication Failed' 
-  | 'Limit Exceeded';
+export type PaymentMethod = 'UPI' | 'Cards' | 'Net Banking' | 'Wallet' | 'N/A';
+
+export type FailureReason = 'Bank Timeout' | string;
 
 export type StrategyType = 
   | 'Retry' 
@@ -122,6 +130,9 @@ export interface RecoveryCase {
   firewallResult: FirewallResult;
   timeline: TimelineEvent[];
   proof?: BlockchainProof;
+  decisionSource?: string | null;
+  retryCount?: number;
+  reason?: string | null;
 }
 
 export interface Agent {

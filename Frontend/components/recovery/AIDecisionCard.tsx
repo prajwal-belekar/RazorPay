@@ -17,12 +17,14 @@ export function AIDecisionCard({ recoveryCase }: { recoveryCase: RecoveryCase })
           </div>
           <div>
             <CardTitle className="text-ai-light font-bold">AI Recovery Decision</CardTitle>
-            <p className="text-xs text-secondaryText">Ollama LLM & Risk Engine Inference</p>
+            <p className="text-xs text-secondaryText">
+              {recoveryCase.decisionSource ? `${recoveryCase.decisionSource} Decision Engine` : 'AI Risk Engine Inference'}
+            </p>
           </div>
         </div>
 
         <Badge variant="ai" size="sm">
-          Ollama Llama3.1-8B
+          {recoveryCase.decisionSource || 'AI Engine'}
         </Badge>
       </CardHeader>
 

@@ -10,6 +10,7 @@ export const mockMerchantDNA: MerchantDNA = {
     Cards: 63,
     'Net Banking': 71,
     Wallet: 76,
+    'N/A': 0,
   },
   topFactors: [
     { factor: 'Customer Transaction History', impact: 38 },

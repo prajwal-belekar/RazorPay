@@ -20,6 +20,7 @@ import { mockTransactions } from '@/lib/mock/transactions';
 import { mockDashboardMetrics, mockRevenueLeakAnomaly } from '@/lib/mock/dashboard';
 import { mockBlockchainProofs } from '@/lib/mock/blockchain';
 import { mockMerchantDNA } from '@/lib/mock/analytics';
+import { getPayments, paymentsToRecoveryCases, computeMetrics } from '@/lib/api/payments';
 import confetti from 'canvas-confetti';
 
 interface RecoveryEngineContextType {
@@ -36,6 +37,9 @@ interface RecoveryEngineContextType {
   transactions: Transaction[];
   proofs: BlockchainProof[];
   merchantDNA: MerchantDNA;
+  dataSource: 'live' | 'mock';
+  isLoading: boolean;
+  backendError: string | null;
   openDemo: () => void;
   closeDemo: () => void;
   startDemo: () => void;
@@ -64,6 +68,73 @@ export function RecoveryEngineProvider({ children }: { children: React.ReactNode
   const [transactions, setTransactions] = useState<Transaction[]>(mockTransactions);
   const [proofs, setProofs] = useState<BlockchainProof[]>(mockBlockchainProofs);
   const [merchantDNA, setMerchantDNA] = useState<MerchantDNA>(mockMerchantDNA);
+  const [dataSource, setDataSource] = useState<'live' | 'mock'>('mock');
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [backendError, setBackendError] = useState<string | null>(null);
+
+  // Fetch real payment records from the FastAPI backend on mount.
+  // Real PostgreSQL -> FastAPI -> Next.js is the single source of truth.
+  // Mock data is only used as a fallback when the backend is unreachable.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const payments = await getPayments();
+        if (cancelled) return;
+
+        if (Array.isArray(payments) && payments.length > 0) {
+          const realCases = paymentsToRecoveryCases(payments);
+          const computed = computeMetrics(payments);
+          setCases(realCases);
+          setTransactions(
+            payments.map((p) => ({
+              id: `Payment #${p.id}`,
+              customerId: `PAY-${p.id}`,
+              customerName: p.customer_type || 'N/A',
+              amount: p.amount,
+              currency: 'INR',
+              paymentMethod: 'N/A' as any,
+              status: (p.recovery_status || '').toUpperCase() === 'SUCCESS' ? ('Recovered' as const) : ('Pending' as const),
+              failureReason: p.failure_reason as any,
+              createdAt: p.created_at || '',
+              updatedAt: p.created_at || '',
+              gateway: 'Razorpay',
+              recoveryId: `Payment #${p.id}`,
+            }))
+          );
+          setMetrics({
+            revenueAtRisk: computed.revenueAtRisk,
+            revenueAtRiskChange: 0,
+            revenueRecovered: computed.revenueRecovered,
+            revenueRecoveredChange: 0,
+            recoveryRate: computed.recoveryRate,
+            recoveryRateChange: 0,
+            opportunitiesCount: computed.opportunitiesCount,
+            opportunitiesChange: 0,
+            aiActionsCount: computed.aiActionsCount,
+            policyComplianceRate: mockDashboardMetrics.policyComplianceRate,
+          });
+          setDataSource('live');
+          setBackendError(null);
+        } else if (cancelled) {
+          return;
+        } else {
+          setDataSource('mock');
+        }
+      } catch (e: any) {
+        if (cancelled) return;
+        setDataSource('mock');
+        setBackendError('Unable to connect to RecoverAI backend.');
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const activeCase = cases[0];
 
@@ -300,6 +371,9 @@ export function RecoveryEngineProvider({ children }: { children: React.ReactNode
         transactions,
         proofs,
         merchantDNA,
+        dataSource,
+        isLoading,
+        backendError,
         openDemo,
         closeDemo,
         startDemo,

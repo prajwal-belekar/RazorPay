@@ -12,6 +12,7 @@ export const mockDefaultSimulationResults: SimulationResult[] = [
       Cards: 48,
       'Net Banking': 60,
       Wallet: 68,
+      'N/A': 0,
     },
   },
   {
@@ -25,6 +26,7 @@ export const mockDefaultSimulationResults: SimulationResult[] = [
       Cards: 55,
       'Net Banking': 52,
       Wallet: 60,
+      'N/A': 0,
     },
   },
   {
@@ -38,6 +40,7 @@ export const mockDefaultSimulationResults: SimulationResult[] = [
       Cards: 50,
       'Net Banking': 48,
       Wallet: 52,
+      'N/A': 0,
     },
   },
   {
@@ -51,6 +54,7 @@ export const mockDefaultSimulationResults: SimulationResult[] = [
       Cards: 78,
       'Net Banking': 80,
       Wallet: 82,
+      'N/A': 0,
     },
     isRecommended: true,
   },

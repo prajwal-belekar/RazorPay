@@ -1,6 +1,26 @@
+# Dependencies / build
 Frontend/node_modules/
 Frontend/.next/
 Frontend/out/
 Frontend/.vercel/
 
+# Python virtual environment
+Backend/venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Environment variables (may contain secrets)
+.env
+.env.local
+.env*.local
+
+# Large / generated archives
+Frontend/app.zip
+*.zip
+
+# TS build info
+Frontend/tsconfig.tsbuildinfo
+
+# Logs
 *.log

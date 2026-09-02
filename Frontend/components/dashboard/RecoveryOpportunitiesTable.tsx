@@ -16,7 +16,7 @@ import { Search, RotateCcw, Cpu, ChevronRight, Code, Copy, Download, ShieldAlert
 
 export function RecoveryOpportunitiesTable() {
   const router = useRouter();
-  const { cases } = useRecoveryEngine();
+  const { cases, isLoading, backendError } = useRecoveryEngine();
   const [filterMethod, setFilterMethod] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [webhookTxnId, setWebhookTxnId] = useState<string | null>(null);
@@ -211,18 +211,33 @@ export function RecoveryOpportunitiesTable() {
         </CardHeader>
 
         <CardContent className="p-0">
-          <DataTable
-            columns={columns}
-            data={filteredCases}
-            onRowClick={(row) => router.push(`/recovery/${row.id}`)}
-          />
+          {isLoading ? (
+            <div className="p-8 text-center text-xs text-secondaryText animate-pulse">
+              Loading payments...
+            </div>
+          ) : backendError ? (
+            <div className="p-8 text-center text-xs text-secondaryText space-y-1">
+              <p>Unable to connect to RecoverAI backend.</p>
+              <p className="text-[10px] text-mutedText">Showing dashboard data from local snapshot.</p>
+            </div>
+          ) : filteredCases.length === 0 ? (
+            <div className="p-8 text-center text-xs text-secondaryText">
+              No payment recovery cases found.
+            </div>
+          ) : (
+            <DataTable
+              columns={columns}
+              data={filteredCases}
+              onRowClick={(row) => router.push(`/recovery/${row.id}`)}
+            />
+          )}
         </CardContent>
       </Card>
 
       <RawWebhookModal
         isOpen={Boolean(webhookTxnId)}
         onClose={() => setWebhookTxnId(null)}
-        transactionId={webhookTxnId || 'TXN-82931'}
+        transactionId={webhookTxnId || undefined}
       />
     </>
   );

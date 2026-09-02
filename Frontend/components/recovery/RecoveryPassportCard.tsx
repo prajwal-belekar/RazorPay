@@ -47,10 +47,16 @@ export function RecoveryPassportCard({ recoveryCase }: { recoveryCase: RecoveryC
               </div>
             </div>
 
-            <Badge variant="success" size="sm">
-              <CheckCircle2 className="h-3 w-3" />
-              VERIFIED PROOF
-            </Badge>
+            {proof ? (
+              <Badge variant="success" size="sm">
+                <CheckCircle2 className="h-3 w-3" />
+                VERIFIED PROOF
+              </Badge>
+            ) : (
+              <Badge variant="outline" size="sm">
+                PROOF NOT AVAILABLE
+              </Badge>
+            )}
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono">
@@ -83,25 +89,31 @@ export function RecoveryPassportCard({ recoveryCase }: { recoveryCase: RecoveryC
 
             <div>
               <span className="text-[10px] text-mutedText block">Recovery Status</span>
-              <span className="text-success font-bold">✓ RECOVERED</span>
+              <span className="text-success font-bold">
+                {proof ? '✓ RECOVERED' : (recoveryCase.status || 'N/A')}
+              </span>
             </div>
 
             <div>
               <span className="text-[10px] text-mutedText block">Blockchain Ledger</span>
-              <span className="text-ai-light font-bold">✓ VERIFIED</span>
+              <span className={proof ? 'text-ai-light font-bold' : 'text-mutedText'}>
+                {proof ? '✓ VERIFIED' : 'NOT VERIFIED'}
+              </span>
             </div>
 
             <div>
               <span className="text-[10px] text-mutedText block">Proof Hash</span>
               <span className="text-secondaryText text-[11px]">
-                {truncateHash(proof?.proofHash || '0x8a91f3c2b84e12d4a976328a9b1c72fc82a10452')}
+                {proof ? truncateHash(proof.proofHash || '') : 'Not available'}
               </span>
             </div>
           </div>
 
           <div className="flex items-center justify-between border-t border-border/60 pt-3">
             <span className="text-[10px] text-mutedText">
-              Polygon POS Enterprise Devnet • Block #{proof?.blockNumber || 18294021}
+              {proof
+                ? `${proof.network} • Block #${proof.blockNumber}`
+                : 'No on-chain proof generated for this payment yet.'}
             </span>
 
             <div className="flex items-center gap-2">
@@ -113,14 +125,16 @@ export function RecoveryPassportCard({ recoveryCase }: { recoveryCase: RecoveryC
                 Trust Center
                 <ArrowRight className="h-3 w-3 ml-1" />
               </Button>
-              <Button
-                variant="ai"
-                size="sm"
-                onClick={() => setIsVerifyModalOpen(true)}
-              >
-                <Lock className="h-3.5 w-3.5" />
-                Verify Proof
-              </Button>
+              {proof && (
+                <Button
+                  variant="ai"
+                  size="sm"
+                  onClick={() => setIsVerifyModalOpen(true)}
+                >
+                  <Lock className="h-3.5 w-3.5" />
+                  Verify Proof
+                </Button>
+              )}
             </div>
           </div>
         </div>

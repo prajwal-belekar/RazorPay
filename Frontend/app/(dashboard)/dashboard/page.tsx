@@ -15,10 +15,10 @@ import { OllamaStatusCard } from '@/components/ai/OllamaStatusCard';
 import { DecisionExplanation } from '@/components/recovery/DecisionExplanation';
 import { SlideUp, StaggerContainer } from '@/components/motion/Motion';
 import { useRecoveryEngine } from '@/context/RecoveryEngineContext';
-import { PlayCircle, Sparkles, ArrowRight, XCircle, CheckCircle2 } from 'lucide-react';
+import { PlayCircle, Sparkles, ArrowRight, XCircle, CheckCircle2, Database, CloudOff } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { metrics, startDemo, stage } = useRecoveryEngine();
+  const { metrics, startDemo, stage, dataSource, backendError, isLoading } = useRecoveryEngine();
 
   return (
     <StaggerContainer className="space-y-6">
@@ -48,6 +48,36 @@ export default function DashboardPage() {
             <PlayCircle className="h-3.5 w-3.5" />
             <span>Run Autonomous Demo (~12s)</span>
           </Button>
+        </div>
+      </SlideUp>
+
+      {/* Backend data source indicator */}
+      <SlideUp delay={0.05}>
+        <div
+          className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-mono ${
+            isLoading
+              ? 'border-border/60 bg-surface text-secondaryText'
+              : dataSource === 'live'
+              ? 'border-success-border/50 bg-success-bg/10 text-success'
+              : 'border-warning-border/50 bg-warning-bg/10 text-warning'
+          }`}
+        >
+          {isLoading ? (
+            <>
+              <Database className="h-3.5 w-3.5 animate-pulse" />
+              <span>Loading payments from backend...</span>
+            </>
+          ) : dataSource === 'live' ? (
+            <>
+              <Database className="h-3.5 w-3.5" />
+              <span>Live backend data · PostgreSQL → FastAPI → Next.js</span>
+            </>
+          ) : (
+            <>
+              <CloudOff className="h-3.5 w-3.5" />
+              <span>Unable to connect to RecoverAI backend — showing local snapshot data.</span>
+            </>
+          )}
         </div>
       </SlideUp>
 

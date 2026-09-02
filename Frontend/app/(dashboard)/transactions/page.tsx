@@ -9,20 +9,21 @@ import { Modal } from '@/components/ui/Modal';
 import { DropdownMenu } from '@/components/ui/Dropdown';
 import { RawWebhookModal } from '@/components/ui/RawWebhookModal';
 import { formatCurrency, formatDate } from '@/lib/formatters';
-import { mockTransactions } from '@/lib/mock/transactions';
 import { Transaction } from '@/types';
+import { useRecoveryEngine } from '@/context/RecoveryEngineContext';
 import { Search, RotateCcw, Cpu, Code, Copy, Download, ExternalLink } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export default function TransactionsPage() {
   const router = useRouter();
+  const { transactions, isLoading } = useRecoveryEngine();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [methodFilter, setMethodFilter] = useState('ALL');
   const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
   const [webhookTxnId, setWebhookTxnId] = useState<string | null>(null);
 
-  const filteredTxns = mockTransactions.filter((t) => {
+  const filteredTxns = transactions.filter((t) => {
     const matchesStatus = statusFilter === 'ALL' || t.status === statusFilter;
     const matchesMethod = methodFilter === 'ALL' || t.paymentMethod === methodFilter;
     const matchesQuery =
@@ -210,11 +211,21 @@ export default function TransactionsPage() {
 
       {/* DataTable */}
       <Card className="p-0">
-        <DataTable
-          columns={columns}
-          data={filteredTxns}
-          onRowClick={(row) => setSelectedTxn(row)}
-        />
+        {isLoading ? (
+          <div className="p-8 text-center text-xs text-secondaryText animate-pulse">
+            Loading payments...
+          </div>
+        ) : filteredTxns.length === 0 ? (
+          <div className="p-8 text-center text-xs text-secondaryText">
+            No payment records found.
+          </div>
+        ) : (
+          <DataTable
+            columns={columns}
+            data={filteredTxns}
+            onRowClick={(row) => setSelectedTxn(row)}
+          />
+        )}
       </Card>
 
       {/* Detail Modal */}
@@ -286,7 +297,7 @@ export default function TransactionsPage() {
       <RawWebhookModal
         isOpen={Boolean(webhookTxnId)}
         onClose={() => setWebhookTxnId(null)}
-        transactionId={webhookTxnId || 'TXN-82931'}
+        transactionId={webhookTxnId || undefined}
       />
     </div>
   );

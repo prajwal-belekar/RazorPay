@@ -17,31 +17,57 @@ import { RevenuePipeline3D } from '@/components/3d/RevenuePipeline';
 import { useRecoveryEngine } from '@/context/RecoveryEngineContext';
 import { RecoveryCase, StrategyType } from '@/types';
 import { formatCurrency, formatDate } from '@/lib/formatters';
-import { ArrowLeft, RotateCcw, Cpu } from 'lucide-react';
+import { ArrowLeft, RotateCcw, Cpu, CloudOff } from 'lucide-react';
 
 export default function RecoveryDetailPage() {
   const params = useParams();
   const router = useRouter();
   const caseId = (params?.id as string) || 'REC-18291';
 
-  const { cases, executeRecoveryCase } = useRecoveryEngine();
+  const { cases, executeRecoveryCase, isLoading, backendError, dataSource } = useRecoveryEngine();
   const [recoveryCase, setRecoveryCase] = useState<RecoveryCase | null>(null);
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyType>('Retry');
   const [isExecuting, setIsExecuting] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
 
   useEffect(() => {
-    const found = cases.find((c) => c.id === caseId || c.transactionId === caseId) || cases[0];
+    const found = cases.find((c) => c.id === caseId || c.transactionId === caseId);
     if (found) {
       setRecoveryCase(found);
       setSelectedStrategy(found.strategy);
+    } else if (!isLoading && cases.length > 0) {
+      setRecoveryCase(null);
     }
-  }, [caseId, cases]);
+  }, [caseId, cases, isLoading]);
+
+  if (isLoading) {
+    return (
+      <div className="p-8 text-center text-xs text-secondaryText animate-pulse">
+        Loading payments...
+      </div>
+    );
+  }
+
+  if (backendError) {
+    return (
+      <div className="p-8 border border-danger-border/60 bg-danger-bg/10 rounded-lg text-center space-y-2">
+        <CloudOff className="h-6 w-6 mx-auto text-danger" />
+        <p className="text-xs font-medium text-primaryText">Unable to connect to RecoverAI backend.</p>
+        <p className="text-[11px] text-secondaryText">Payment #{caseId} cannot be loaded. Please ensure the FastAPI backend is running.</p>
+        <button
+          onClick={() => router.push('/dashboard')}
+          className="mt-2 text-xs text-ai-light hover:underline"
+        >
+          Back to Dashboard
+        </button>
+      </div>
+    );
+  }
 
   if (!recoveryCase) {
     return (
       <div className="p-8 text-center text-xs text-secondaryText">
-        Loading recovery case details...
+        No payment recovery case found.
       </div>
     );
   }
@@ -136,7 +162,7 @@ export default function RecoveryDetailPage() {
 
           <div>
             <span className="text-[10px] text-mutedText block">Payment Method</span>
-            <span className="text-primaryText font-semibold">{recoveryCase.paymentMethod}</span>
+            <span className="text-primaryText font-semibold">{recoveryCase.paymentMethod === 'N/A' ? 'N/A' : recoveryCase.paymentMethod}</span>
           </div>
 
           <div>
@@ -150,8 +176,9 @@ export default function RecoveryDetailPage() {
           </div>
 
           <div>
-            <span className="text-[10px] text-mutedText block">Gateway</span>
-            <span className="text-secondaryText">Razorpay</span>
+            <span className="text-[10px] text-mutedText block">Decision Source</span>
+            <span className="text-ai-light font-semibold">{recoveryCase.decisionSource || 'N/A'}</span>
+            <span className="text-[10px] text-mutedText block">Retries: {recoveryCase.retryCount ?? 'N/A'}</span>
           </div>
         </div>
       </Card>
