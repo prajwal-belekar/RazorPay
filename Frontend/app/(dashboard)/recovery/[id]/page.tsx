@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -15,7 +15,7 @@ import { RecoveryScore } from '@/components/recovery/RecoveryScore';
 import { ConfidenceMatrix } from '@/components/recovery/ConfidenceMatrix';
 import { RevenuePipeline3D } from '@/components/3d/RevenuePipeline';
 import { useRecoveryEngine } from '@/context/RecoveryEngineContext';
-import { RecoveryCase, StrategyType } from '@/types';
+import { StrategyType } from '@/types';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { ArrowLeft, RotateCcw, Cpu, CloudOff } from 'lucide-react';
 
@@ -25,20 +25,17 @@ export default function RecoveryDetailPage() {
   const caseId = (params?.id as string) || 'REC-18291';
 
   const { cases, executeRecoveryCase, isLoading, backendError, dataSource } = useRecoveryEngine();
-  const [recoveryCase, setRecoveryCase] = useState<RecoveryCase | null>(null);
+  const recoveryCase = cases.find((c) => c.id === caseId || c.transactionId === caseId) || null;
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyType>('Retry');
   const [isExecuting, setIsExecuting] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
 
-  useEffect(() => {
-    const found = cases.find((c) => c.id === caseId || c.transactionId === caseId);
-    if (found) {
-      setRecoveryCase(found);
-      setSelectedStrategy(found.strategy);
-    } else if (!isLoading && cases.length > 0) {
-      setRecoveryCase(null);
-    }
-  }, [caseId, cases, isLoading]);
+  const activeCaseId = recoveryCase?.id ?? null;
+  const [lastCaseId, setLastCaseId] = useState<string | null>(null);
+  if (activeCaseId !== lastCaseId) {
+    setLastCaseId(activeCaseId);
+    if (recoveryCase) setSelectedStrategy(recoveryCase.strategy);
+  }
 
   if (isLoading) {
     return (

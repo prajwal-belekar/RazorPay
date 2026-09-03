@@ -51,6 +51,14 @@ export function paymentToRecoveryCase(payment: Payment): RecoveryCase {
   const probability = confidence;
   const expectedRecovery = confidence > 0 ? Math.round(payment.amount * (confidence / 100)) : 0;
 
+  // Map backend payment_method to frontend PaymentMethod type
+  const paymentMethod = payment.payment_method 
+    ? (payment.payment_method === 'upi' ? 'UPI' : 
+       payment.payment_method === 'card' ? 'Cards' :
+       payment.payment_method === 'netbanking' ? 'Net Banking' :
+       payment.payment_method === 'wallet' ? 'Wallet' : 'N/A')
+    : 'N/A';
+
   return {
     id: String(payment.id),
     transactionId: `Payment #${payment.id}`,
@@ -63,7 +71,7 @@ export function paymentToRecoveryCase(payment: Payment): RecoveryCase {
       historicalSuccessRate: confidence,
     },
     amount: payment.amount,
-    paymentMethod: 'N/A',
+    paymentMethod,
     failureReason: payment.failure_reason || 'Unknown',
     recoveryProbability: probability,
     expectedRecovery,
@@ -85,11 +93,12 @@ export function paymentToRecoveryCase(payment: Payment): RecoveryCase {
       },
     ],
     firewallResult: {
-      approved: true,
-      statusMessage: 'Encoded from backend decision record',
-      evaluatedAt: payment.created_at || '',
-      policyVersion: 'N/A',
-      checks: [],
+      approved: (payment.firewall_decision || '') === 'APPROVED',
+      statusMessage:
+        payment.firewall_reason || 'No firewall decision recorded for this payment.',
+      evaluatedAt: payment.firewall_evaluated_at || payment.created_at || '',
+      policyVersion: payment.firewall_policy_version || 'N/A',
+      checks: Array.isArray(payment.firewall_checks) ? payment.firewall_checks : [],
     },
     timeline: [
       {
@@ -109,7 +118,27 @@ export function paymentToRecoveryCase(payment: Payment): RecoveryCase {
         description: `${payment.decision_source || 'N/A'} recommended "${payment.recommended_action || 'N/A'}" with ${confidence}% confidence.`,
       },
     ],
-    proof: undefined,
+    proof: payment.proof ? {
+      proofId: payment.proof.proof_id,
+      transactionId: payment.proof.transaction_id,
+      amount: payment.proof.recovered_amount,
+      strategy: mapStrategy(payment.proof.recovery_action),
+      policyVersion: payment.proof.policy_version || 'N/A',
+      proofHash: payment.proof.proof_hash,
+      timestamp: payment.proof.recovery_timestamp || '',
+      blockNumber: payment.proof.block_number,
+      verified: payment.proof.proof_status === 'VERIFIED',
+      txHash: payment.proof.tx_hash,
+      network: payment.proof.network,
+      razorpayPaymentId: payment.proof.razorpay_payment_id,
+      recoveryAction: payment.proof.recovery_action,
+      recoveryTimestamp: payment.proof.recovery_timestamp,
+      aiConfidence: payment.proof.ai_confidence,
+      firewallDecision: payment.proof.firewall_decision,
+      executionId: payment.proof.execution_id,
+      proofPayload: payment.proof.proof_payload,
+      proofStatus: payment.proof.proof_status,
+    } : undefined,
     decisionSource: payment.decision_source,
     retryCount: payment.retry_count,
     reason: payment.reason,
@@ -127,8 +156,15 @@ export async function getPayments(): Promise<Payment[]> {
 
 export async function getPayment(id: string | number): Promise<Payment | null> {
   const payments = await getPayments();
-  const numeric = typeof id === 'number' ? id : Number(id);
+  const numeric = typeof id === 'number' ? id : Number(id.replace(/^Payment #/i, ''));
   return payments.find((p) => p.id === numeric) || null;
+}
+
+export async function executeRecovery(id: string | number, action: string) {
+  return apiFetch<{ outcome: string; execution: unknown }>(`/api/recovery/cases/${id}/execute`, {
+    method: 'POST',
+    body: JSON.stringify({ action }),
+  });
 }
 
 export function computeMetrics(payments: Payment[]) {

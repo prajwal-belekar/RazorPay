@@ -18,7 +18,7 @@ import { useRecoveryEngine } from '@/context/RecoveryEngineContext';
 import { PlayCircle, Sparkles, ArrowRight, XCircle, CheckCircle2, Database, CloudOff } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { metrics, startDemo, stage, dataSource, backendError, isLoading } = useRecoveryEngine();
+  const { metrics, startDemo, stage, dataSource, backendError, isLoading, connectionStatus } = useRecoveryEngine();
 
   return (
     <StaggerContainer className="space-y-6">
@@ -51,32 +51,35 @@ export default function DashboardPage() {
         </div>
       </SlideUp>
 
-      {/* Backend data source indicator */}
+      {/* Connection Status Indicator */}
       <SlideUp delay={0.05}>
         <div
           className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-mono ${
-            isLoading
+            connectionStatus === 'loading' || isLoading
               ? 'border-border/60 bg-surface text-secondaryText'
-              : dataSource === 'live'
+              : connectionStatus === 'live'
               ? 'border-success-border/50 bg-success-bg/10 text-success'
-              : 'border-warning-border/50 bg-warning-bg/10 text-warning'
+              : 'border-danger-border/50 bg-danger-bg/10 text-danger'
           }`}
         >
-          {isLoading ? (
+          {connectionStatus === 'loading' || isLoading ? (
             <>
               <Database className="h-3.5 w-3.5 animate-pulse" />
-              <span>Loading payments from backend...</span>
+              <span>Connecting to backend...</span>
             </>
-          ) : dataSource === 'live' ? (
+          ) : connectionStatus === 'live' ? (
             <>
               <Database className="h-3.5 w-3.5" />
-              <span>Live backend data · PostgreSQL → FastAPI → Next.js</span>
+              <span>LIVE · Real-time updates active · WebSocket connected</span>
             </>
           ) : (
             <>
               <CloudOff className="h-3.5 w-3.5" />
-              <span>Unable to connect to RecoverAI backend — showing local snapshot data.</span>
+              <span>BACKEND OFFLINE · Using cached data · Reconnecting...</span>
             </>
+          )}
+          {backendError && (
+            <span className="text-[10px] text-danger/80 ml-2">({backendError})</span>
           )}
         </div>
       </SlideUp>

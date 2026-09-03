@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import {
   RecoveryCase,
   Transaction,
@@ -8,6 +8,8 @@ import {
   DashboardMetrics,
   Anomaly,
   MerchantDNA,
+  Payment,
+  PaymentMethod,
 } from '@/types';
 import {
   RecoveryStage,
@@ -18,10 +20,11 @@ import {
 import { mockRecoveryCases } from '@/lib/mock/recovery';
 import { mockTransactions } from '@/lib/mock/transactions';
 import { mockDashboardMetrics, mockRevenueLeakAnomaly } from '@/lib/mock/dashboard';
-import { mockBlockchainProofs } from '@/lib/mock/blockchain';
 import { mockMerchantDNA } from '@/lib/mock/analytics';
-import { getPayments, paymentsToRecoveryCases, computeMetrics } from '@/lib/api/payments';
+import { getPayments, paymentsToRecoveryCases, computeMetrics, executeRecovery } from '@/lib/api/payments';
 import confetti from 'canvas-confetti';
+
+export type ConnectionStatus = 'live' | 'offline' | 'loading';
 
 interface RecoveryEngineContextType {
   stage: RecoveryStage;
@@ -40,6 +43,7 @@ interface RecoveryEngineContextType {
   dataSource: 'live' | 'mock';
   isLoading: boolean;
   backendError: string | null;
+  connectionStatus: ConnectionStatus;
   openDemo: () => void;
   closeDemo: () => void;
   startDemo: () => void;
@@ -55,6 +59,61 @@ interface RecoveryEngineContextType {
 
 const RecoveryEngineContext = createContext<RecoveryEngineContextType | undefined>(undefined);
 
+function getWebSocketUrl(): string {
+  if (process.env.NEXT_PUBLIC_WS_URL) {
+    return process.env.NEXT_PUBLIC_WS_URL;
+  }
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname || '127.0.0.1';
+    return `ws://${host}:8000/ws/dashboard`;
+  }
+  return 'ws://127.0.0.1:8000/ws/dashboard';
+}
+
+const RECONNECT_INTERVAL = 5000;
+const MAX_RECONNECT_ATTEMPTS = 10;
+
+function processPaymentsData(payments: Payment[]) {
+  const realCases = paymentsToRecoveryCases(payments);
+  const computed = computeMetrics(payments);
+  const transactions = payments.map((p) => {
+    const paymentMethod = p.payment_method 
+      ? (p.payment_method === 'upi' ? 'UPI' : 
+         p.payment_method === 'card' ? 'Cards' :
+         p.payment_method === 'netbanking' ? 'Net Banking' :
+         p.payment_method === 'wallet' ? 'Wallet' : 'N/A')
+      : 'N/A';
+    
+    return {
+      id: `Payment #${p.id}`,
+      customerId: `PAY-${p.id}`,
+      customerName: p.customer_type || 'N/A',
+      amount: p.amount,
+      currency: 'INR',
+      paymentMethod: paymentMethod as PaymentMethod,
+      status: (p.recovery_status || '').toUpperCase() === 'SUCCESS' ? ('Recovered' as const) : ('Pending' as const),
+      failureReason: p.failure_reason as any,
+      createdAt: p.created_at || '',
+      updatedAt: p.created_at || '',
+      gateway: 'Razorpay',
+      recoveryId: `Payment #${p.id}`,
+    };
+  });
+  const metrics: DashboardMetrics = {
+    revenueAtRisk: computed.revenueAtRisk,
+    revenueAtRiskChange: 0,
+    revenueRecovered: computed.revenueRecovered,
+    revenueRecoveredChange: 0,
+    recoveryRate: computed.recoveryRate,
+    recoveryRateChange: 0,
+    opportunitiesCount: computed.opportunitiesCount,
+    opportunitiesChange: 0,
+    aiActionsCount: computed.aiActionsCount,
+    policyComplianceRate: mockDashboardMetrics.policyComplianceRate,
+  };
+  return { realCases, transactions, metrics };
+}
+
 export function RecoveryEngineProvider({ children }: { children: React.ReactNode }) {
   const [stage, setStage] = useState<RecoveryStage>('idle');
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
@@ -66,11 +125,17 @@ export function RecoveryEngineProvider({ children }: { children: React.ReactNode
   const [anomaly, setAnomaly] = useState<Anomaly>(mockRevenueLeakAnomaly);
   const [cases, setCases] = useState<RecoveryCase[]>(mockRecoveryCases);
   const [transactions, setTransactions] = useState<Transaction[]>(mockTransactions);
-  const [proofs, setProofs] = useState<BlockchainProof[]>(mockBlockchainProofs);
+  const [proofs, setProofs] = useState<BlockchainProof[]>([]);
   const [merchantDNA, setMerchantDNA] = useState<MerchantDNA>(mockMerchantDNA);
   const [dataSource, setDataSource] = useState<'live' | 'mock'>('mock');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [backendError, setBackendError] = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('loading');
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isMountedRef = useRef(true);
 
   // Fetch real payment records from the FastAPI backend on mount.
   // Real PostgreSQL -> FastAPI -> Next.js is the single source of truth.
@@ -84,37 +149,10 @@ export function RecoveryEngineProvider({ children }: { children: React.ReactNode
         if (cancelled) return;
 
         if (Array.isArray(payments) && payments.length > 0) {
-          const realCases = paymentsToRecoveryCases(payments);
-          const computed = computeMetrics(payments);
+          const { realCases, transactions: txns, metrics: computedMetrics } = processPaymentsData(payments);
           setCases(realCases);
-          setTransactions(
-            payments.map((p) => ({
-              id: `Payment #${p.id}`,
-              customerId: `PAY-${p.id}`,
-              customerName: p.customer_type || 'N/A',
-              amount: p.amount,
-              currency: 'INR',
-              paymentMethod: 'N/A' as any,
-              status: (p.recovery_status || '').toUpperCase() === 'SUCCESS' ? ('Recovered' as const) : ('Pending' as const),
-              failureReason: p.failure_reason as any,
-              createdAt: p.created_at || '',
-              updatedAt: p.created_at || '',
-              gateway: 'Razorpay',
-              recoveryId: `Payment #${p.id}`,
-            }))
-          );
-          setMetrics({
-            revenueAtRisk: computed.revenueAtRisk,
-            revenueAtRiskChange: 0,
-            revenueRecovered: computed.revenueRecovered,
-            revenueRecoveredChange: 0,
-            recoveryRate: computed.recoveryRate,
-            recoveryRateChange: 0,
-            opportunitiesCount: computed.opportunitiesCount,
-            opportunitiesChange: 0,
-            aiActionsCount: computed.aiActionsCount,
-            policyComplianceRate: mockDashboardMetrics.policyComplianceRate,
-          });
+          setTransactions(txns);
+          setMetrics(computedMetrics);
           setDataSource('live');
           setBackendError(null);
         } else if (cancelled) {
@@ -133,6 +171,125 @@ export function RecoveryEngineProvider({ children }: { children: React.ReactNode
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  // WebSocket connection for real-time updates
+  useEffect(() => {
+    isMountedRef.current = true;
+    reconnectAttemptsRef.current = 0;
+
+    const connect = () => {
+      if (!isMountedRef.current) return;
+
+      try {
+        const wsUrl = getWebSocketUrl();
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          if (!isMountedRef.current) {
+            ws.close();
+            return;
+          }
+          setConnectionStatus('live');
+          reconnectAttemptsRef.current = 0;
+          setBackendError(null);
+        };
+
+        ws.onmessage = (event) => {
+          if (!isMountedRef.current) return;
+
+          try {
+            const message = JSON.parse(event.data);
+            
+            if (message.type === 'dashboard_update' && message.data) {
+              const { payments, ...metricsData } = message.data;
+              
+              // Update metrics directly from backend
+              setMetrics((prev) => ({
+                ...prev,
+                ...metricsData,
+              }));
+
+              // Update cases and transactions from payments
+              if (Array.isArray(payments)) {
+                const { realCases, transactions: txns } = processPaymentsData(payments);
+                setCases(realCases);
+                setTransactions(txns);
+                
+                // If we have live data, update dataSource
+                if (payments.length > 0) {
+                  setDataSource('live');
+                  setBackendError(null);
+                }
+              }
+            } else if (message.type === 'pong') {
+              // Heartbeat response
+            }
+          } catch (e) {
+            console.error('Failed to parse WebSocket message:', e);
+          }
+        };
+
+        ws.onerror = (event) => {
+          // Standard browser WebSocket error events are generic Event instances without diagnostic payload (W3C spec).
+          // Connection teardown and auto-reconnection are handled in ws.onclose.
+          // Only log if an explicit message string or error details are present.
+          const errorMsg = (event as any)?.message || (typeof event === 'string' ? event : null);
+          if (errorMsg) {
+            console.warn('WebSocket warning:', errorMsg);
+          }
+        };
+
+        ws.onclose = () => {
+          if (!isMountedRef.current) return;
+          
+          setConnectionStatus('offline');
+          wsRef.current = null;
+
+          // Attempt reconnection
+          if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttemptsRef.current++;
+            reconnectTimeoutRef.current = setTimeout(() => {
+              connect();
+            }, RECONNECT_INTERVAL);
+          } else {
+            setBackendError('WebSocket connection lost. Unable to reconnect after multiple attempts.');
+          }
+        };
+      } catch (e) {
+        console.error('Failed to create WebSocket connection:', e);
+        setConnectionStatus('offline');
+        
+        if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+          reconnectAttemptsRef.current++;
+          reconnectTimeoutRef.current = setTimeout(() => {
+            connect();
+          }, RECONNECT_INTERVAL);
+        }
+      }
+    };
+
+    connect();
+
+    // Heartbeat to keep connection alive
+    const heartbeatInterval = setInterval(() => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, 30000);
+
+    return () => {
+      isMountedRef.current = false;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      clearInterval(heartbeatInterval);
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
     };
   }, []);
 
@@ -231,22 +388,6 @@ export function RecoveryEngineProvider({ children }: { children: React.ReactNode
         }
 
         if (currentStageKey === 'verified') {
-          const newProof: BlockchainProof = {
-            proofId: `PRF-${Date.now().toString().slice(-6)}`,
-            transactionId: 'TXN-82931',
-            amount: 18500,
-            strategy: 'Retry + Payment Link',
-            policyVersion: 'v2.4',
-            proofHash: '0x8a91f3c2b84e12d4a976328a9b1c72fc82a10452',
-            policyHash: '0x91ac82de941038bc72ef41029481bc91a4729103',
-            timestamp: new Date().toISOString(),
-            blockNumber: 18294021,
-            verified: true,
-            txHash: '0x7a31b294c8e102f4a19028e3b1c28f9104820921',
-            network: 'Polygon Devnet',
-          };
-
-          setProofs((prev) => [newProof, ...prev]);
         }
 
         if (currentStageKey === 'learning') {
@@ -275,6 +416,22 @@ export function RecoveryEngineProvider({ children }: { children: React.ReactNode
   }, [isDemoRunning, isPaused, currentStepIndex]);
 
   const executeRecoveryCase = useCallback(async (id: string, strategy: string): Promise<boolean> => {
+    if (dataSource === 'live') {
+      const action = strategy.toUpperCase().includes('RETRY + PAYMENT')
+        ? 'HYBRID'
+        : strategy.toUpperCase().replaceAll(' + ', '_');
+      const result = await executeRecovery(id, action);
+      if (result.outcome === 'SUCCESS' || result.outcome === 'DUPLICATE') {
+        const payments = await getPayments();
+        const { realCases, transactions: txns, metrics: computedMetrics } = processPaymentsData(payments);
+        setCases(realCases);
+        setTransactions(txns);
+        setMetrics(computedMetrics);
+        return result.outcome === 'SUCCESS';
+      }
+      return false;
+    }
+
     setStage('executing');
     await new Promise((r) => setTimeout(r, 1200));
 
@@ -302,24 +459,7 @@ export function RecoveryEngineProvider({ children }: { children: React.ReactNode
     setStage('recovered');
     try { confetti({ particleCount: 50, spread: 70, origin: { y: 0.6 } }); } catch {}
 
-    setTimeout(() => {
-      setStage('verified');
-      const newProof: BlockchainProof = {
-        proofId: `PRF-${Date.now().toString().slice(-6)}`,
-        transactionId: id,
-        amount: 18500,
-        strategy: strategy as any,
-        policyVersion: 'v2.4',
-        proofHash: '0x8a91f3c2b84e12d4a976328a9b1c72fc82a10452',
-        policyHash: '0x91ac82de941038bc72ef41029481bc91a4729103',
-        timestamp: new Date().toISOString(),
-        blockNumber: 18294022,
-        verified: true,
-        txHash: '0x7a31b294c8e102f4a19028e3b1c28f9104820921',
-        network: 'Polygon Devnet',
-      };
-      setProofs((prev) => [newProof, ...prev]);
-    }, 1200);
+    setTimeout(() => setStage('verified'), 1200);
 
     setTimeout(() => {
       setStage('learning');
@@ -335,7 +475,7 @@ export function RecoveryEngineProvider({ children }: { children: React.ReactNode
     }, 3600);
 
     return true;
-  }, []);
+  }, [dataSource]);
 
   const updatePolicyThresholds = useCallback((maxRetries: number, minConfidence: number, autoCap: number) => {
     setCases((prev) =>
@@ -374,6 +514,7 @@ export function RecoveryEngineProvider({ children }: { children: React.ReactNode
         dataSource,
         isLoading,
         backendError,
+        connectionStatus,
         openDemo,
         closeDemo,
         startDemo,

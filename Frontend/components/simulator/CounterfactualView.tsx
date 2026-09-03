@@ -4,15 +4,20 @@ import React from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { formatCurrency } from '@/lib/formatters';
+import { SimulationResult } from '@/types';
 import { Sparkles, ArrowRight, XCircle, CheckCircle2 } from 'lucide-react';
 
 export function CounterfactualView({
   amount = 18500,
+  results,
   onSelectStrategy,
 }: {
   amount?: number;
+  results?: SimulationResult[];
   onSelectStrategy?: (strat: string) => void;
 }) {
+  const retry = results?.find((result) => result.strategy === 'Retry');
+  const hybrid = results?.find((result) => result.strategy === 'Retry + Payment Link');
   const scenarios = [
     {
       title: 'WHAT IF WE DO NOTHING?',
@@ -25,18 +30,18 @@ export function CounterfactualView({
     },
     {
       title: 'WHAT IF WE RETRY ONLY?',
-      recovery: Math.round(amount * 0.76),
-      loss: Math.round(amount * 0.24),
-      probability: 76,
+      recovery: retry?.expectedRecovery ?? 0,
+      loss: Math.max(0, amount - (retry?.expectedRecovery ?? 0)),
+      probability: retry?.probability ?? 0,
       status: 'PARTIAL RECOVERY',
       variant: 'warning' as const,
       color: 'text-warning',
     },
     {
       title: 'WHAT IF WE USE HYBRID CASCADE?',
-      recovery: Math.round(amount * 0.96),
-      loss: Math.round(amount * 0.04),
-      probability: 96,
+      recovery: hybrid?.expectedRecovery ?? 0,
+      loss: Math.max(0, amount - (hybrid?.expectedRecovery ?? 0)),
+      probability: hybrid?.probability ?? 0,
       status: 'OPTIMAL RECOVERY',
       variant: 'ai' as const,
       color: 'text-ai-light',

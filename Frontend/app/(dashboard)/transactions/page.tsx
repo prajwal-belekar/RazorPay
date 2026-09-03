@@ -16,7 +16,7 @@ import { useRouter } from 'next/navigation';
 
 export default function TransactionsPage() {
   const router = useRouter();
-  const { transactions, isLoading } = useRecoveryEngine();
+  const { transactions, isLoading, connectionStatus, backendError } = useRecoveryEngine();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [methodFilter, setMethodFilter] = useState('ALL');
@@ -162,11 +162,36 @@ export default function TransactionsPage() {
           <p className="text-xs sm:text-sm text-secondaryText mt-1">
             Real-time audit log of all payment attempts, failures, and recovery states.
           </p>
-        </div>
+</div>
 
+      <div className="flex items-center gap-4">
         <span className="font-mono text-xs text-mutedText">
           {filteredTxns.length} Transactions Found
         </span>
+        <div
+          className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[10px] font-mono ${
+            connectionStatus === 'loading' || isLoading
+              ? 'border-border/60 bg-surface text-secondaryText'
+              : connectionStatus === 'live'
+              ? 'border-success-border/50 bg-success-bg/10 text-success'
+              : 'border-danger-border/50 bg-danger-bg/10 text-danger'
+          }`}
+        >
+          {connectionStatus === 'loading' || isLoading ? (
+            <>
+              <span>LOADING</span>
+            </>
+          ) : connectionStatus === 'live' ? (
+            <>
+              <span>LIVE</span>
+            </>
+          ) : (
+            <>
+              <span>BACKEND OFFLINE</span>
+            </>
+          )}
+        </div>
+      </div>
       </div>
 
       {/* Filter Bar */}

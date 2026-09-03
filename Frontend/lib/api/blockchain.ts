@@ -10,19 +10,18 @@ export async function getBlockchainProofs(): Promise<BlockchainProof[]> {
   }
 }
 
-export async function verifyProof(proofHash: string): Promise<{ verified: boolean; blockNumber: number; txHash: string; timestamp: string }> {
+export async function verifyProof(proofHash: string): Promise<{ verified: boolean; blockNumber: number | null; txHash: string | null; timestamp: string | null }> {
   try {
     return await apiFetch('/api/blockchain/verify', {
       method: 'POST',
       body: JSON.stringify({ proofHash }),
     });
   } catch {
-    const proof = mockBlockchainProofs.find((p) => p.proofHash === proofHash) || mockBlockchainProofs[0];
     return {
-      verified: true,
-      blockNumber: proof.blockNumber,
-      txHash: proof.txHash,
-      timestamp: proof.timestamp,
+      verified: false,
+      blockNumber: null,
+      txHash: null,
+      timestamp: null,
     };
   }
 }

@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -8,9 +9,10 @@ import { Modal } from '@/components/ui/Modal';
 import { RecoveryTwin3D } from '@/components/3d/RecoveryTwin';
 import { CounterfactualView } from '@/components/simulator/CounterfactualView';
 import { formatCurrency } from '@/lib/formatters';
-import { runSimulation } from '@/lib/api/simulator';
+import { runSimulation, SimulationActual } from '@/lib/api/simulator';
+import { getPayment } from '@/lib/api/payments';
+import { Payment } from '@/types';
 import { SimulationResult, StrategyType } from '@/types';
-import { mockDefaultSimulationResults } from '@/lib/mock/simulator';
 import {
   BarChart,
   Bar,
@@ -23,8 +25,28 @@ import {
 } from 'recharts';
 import { Cpu, Sparkles, Sliders, ArrowRight, GitFork } from 'lucide-react';
 
-export default function SimulatorPage() {
-  const [revenueAtRisk, setRevenueAtRisk] = useState<number>(2840000);
+function CustomTooltip({ active, payload }: any) {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload as SimulationResult;
+    return (
+      <div className="rounded-lg border border-border bg-surface-elevated p-3 shadow-card text-xs space-y-1 font-sans">
+        <p className="font-bold text-primaryText">{data.strategy}</p>
+        <div className="flex justify-between gap-4"><span className="text-secondaryText">Expected Recovery:</span><span className="font-mono text-success font-bold">{formatCurrency(data.expectedRecovery)}</span></div>
+        <div className="flex justify-between gap-4"><span className="text-secondaryText">Probability:</span><span className="font-mono text-ai-light font-bold">{data.probability}%</span></div>
+        <div className="flex justify-between gap-4"><span className="text-secondaryText">ROI:</span><span className="font-mono text-primaryText font-bold">{data.expectedRoi}x</span></div>
+      </div>
+    );
+  }
+  return null;
+}
+
+function SimulatorContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const transactionQuery = searchParams.get('tx');
+  const [payment, setPayment] = useState<Payment | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [revenueAtRisk, setRevenueAtRisk] = useState<number>(0);
   const [horizonDays, setHorizonDays] = useState<number>(7);
   const [retryCount, setRetryCount] = useState<number>(2);
   const [selectedStrategies, setSelectedStrategies] = useState<StrategyType[]>([
@@ -34,55 +56,72 @@ export default function SimulatorPage() {
     'Retry + Payment Link',
   ]);
 
-  const [results, setResults] = useState<SimulationResult[]>(mockDefaultSimulationResults);
+  const [results, setResults] = useState<SimulationResult[]>([]);
+  const [actual, setActual] = useState<SimulationActual | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
   const [isExecuteModalOpen, setIsExecuteModalOpen] = useState(false);
   const [executingStrategy, setExecutingStrategy] = useState<SimulationResult | null>(null);
 
+  useEffect(() => {
+    if (!transactionQuery) {
+      return;
+    }
+    let cancelled = false;
+    getPayment(transactionQuery)
+      .then((loaded) => {
+        if (cancelled) return;
+        if (!loaded) {
+          setLoadError(`Transaction ${transactionQuery} was not found.`);
+          setPayment(null);
+          return;
+        }
+        setPayment(loaded);
+        setRevenueAtRisk(loaded.amount);
+        const loadedRetryCount = (loaded.retry_count || 0) + (loaded.previous_recovery_attempts || 0);
+        setRetryCount(loadedRetryCount);
+        setLoadError(null);
+        setIsSimulating(true);
+        void runSimulation({
+          paymentId: loaded.id,
+          horizonDays,
+          retryCount: loadedRetryCount,
+          selectedStrategies,
+        }).then((simulation) => {
+          if (cancelled) return;
+          setResults(simulation.predictions);
+          setActual(simulation.actual);
+        }).catch(() => {
+          if (!cancelled) setLoadError('Unable to calculate strategy predictions.');
+        }).finally(() => {
+          if (!cancelled) setIsSimulating(false);
+        });
+      })
+      .catch(() => !cancelled && setLoadError('Unable to load the transaction from the backend.'));
+    return () => { cancelled = true; };
+  }, [transactionQuery, horizonDays, selectedStrategies]);
+
   const handleRunSimulation = async () => {
     setIsSimulating(true);
     try {
+      if (!payment) return;
       const res = await runSimulation({
-        revenueAtRisk,
+        paymentId: payment.id,
         horizonDays,
         retryCount,
         selectedStrategies,
       });
-      setResults(res);
+      setResults(res.predictions);
+      setActual(res.actual);
+    } catch (error) {
+      setResults([]);
+      setActual(null);
+      setLoadError(error instanceof Error ? error.message : 'Simulation failed.');
     } finally {
       setIsSimulating(false);
     }
   };
 
-  useEffect(() => {
-    handleRunSimulation();
-  }, [revenueAtRisk, horizonDays, retryCount]);
-
-  const recommendedResult = results.find((r) => r.isRecommended) || results[3] || results[0];
-
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload as SimulationResult;
-      return (
-        <div className="rounded-lg border border-border bg-surface-elevated p-3 shadow-card text-xs space-y-1 font-sans">
-          <p className="font-bold text-primaryText">{data.strategy}</p>
-          <div className="flex justify-between gap-4">
-            <span className="text-secondaryText">Expected Recovery:</span>
-            <span className="font-mono text-success font-bold">{formatCurrency(data.expectedRecovery)}</span>
-          </div>
-          <div className="flex justify-between gap-4">
-            <span className="text-secondaryText">Probability:</span>
-            <span className="font-mono text-ai-light font-bold">{data.probability}%</span>
-          </div>
-          <div className="flex justify-between gap-4">
-            <span className="text-secondaryText">ROI:</span>
-            <span className="font-mono text-primaryText font-bold">{data.expectedRoi}x</span>
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
+  const recommendedResult = results.find((r) => r.isRecommended) || results[0];
 
   return (
     <div className="space-y-6">
@@ -127,13 +166,22 @@ export default function SimulatorPage() {
               <input
                 type="number"
                 value={revenueAtRisk}
-                onChange={(e) => setRevenueAtRisk(Number(e.target.value))}
+                readOnly
                 className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-xs text-primaryText font-mono focus:outline-none focus:border-ai"
               />
               <span className="text-[10px] text-mutedText font-mono">
                 {formatCurrency(revenueAtRisk, { compact: true })} exposed revenue
               </span>
             </div>
+
+            {payment && (
+              <div className="rounded-md border border-ai-border/40 bg-ai-bg/10 p-3 space-y-2 text-[11px] font-mono">
+                <div className="flex justify-between"><span className="text-secondaryText">Transaction</span><strong className="text-primaryText">Payment #{payment.id}</strong></div>
+                <div className="flex justify-between"><span className="text-secondaryText">Failure</span><strong className="text-danger">{payment.failure_reason}</strong></div>
+                <div className="flex justify-between"><span className="text-secondaryText">Method</span><strong className="text-primaryText">{payment.payment_method || 'Unknown'}</strong></div>
+                <div className="flex justify-between"><span className="text-secondaryText">Customer history</span><strong className="text-primaryText">{payment.customer_type || 'Unknown'}</strong></div>
+              </div>
+            )}
 
             {/* Recovery Horizon Slider */}
             <div className="space-y-1.5">
@@ -207,6 +255,8 @@ export default function SimulatorPage() {
         {/* Right: Predicted Outcomes & Visual Comparison */}
         <div className="lg:col-span-8 space-y-6">
           {/* Highlight Recommended Outcome Card */}
+          {loadError && <Card className="border-danger-border/60 bg-danger-bg/10 p-4 text-xs text-danger">{loadError}</Card>}
+
           {recommendedResult && (
             <Card className="border-ai-border/80 bg-gradient-to-r from-surface to-ai-bg/20 p-5 shadow-glow">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -216,7 +266,7 @@ export default function SimulatorPage() {
                       <Sparkles className="h-3 w-3" />
                       RECOMMENDED STRATEGY
                     </Badge>
-                    <span className="text-xs font-mono text-success font-bold">+₹4.5L Expected Uplift</span>
+                    <span className="text-xs font-mono text-warning font-bold">PREDICTED</span>
                   </div>
                   <h3 className="text-lg font-bold text-primaryText">{recommendedResult.strategy}</h3>
                   <p className="text-xs text-secondaryText">
@@ -240,7 +290,19 @@ export default function SimulatorPage() {
           )}
 
           {/* Counterfactual "What-If" Analysis View */}
-          <CounterfactualView />
+          <CounterfactualView amount={payment?.amount || 0} results={results} />
+
+          {actual && (
+            <Card className="border-success-border/60 bg-success-bg/10 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Badge variant="success" size="sm">ACTUAL BACKEND RESULT</Badge>
+                  <p className="text-xs text-secondaryText mt-2">Execution {actual.execution_id} returned {actual.status} for {actual.action}.</p>
+                </div>
+                <span className="text-sm font-bold text-success">{actual.amount ? formatCurrency(actual.amount) : 'No recovered value'}</span>
+              </div>
+            </Card>
+          )}
 
           {/* 3D Strategy Twin Constellation Card */}
           <Card className="p-4 border-ai-border/40 bg-surface-elevated/40">
@@ -267,6 +329,9 @@ export default function SimulatorPage() {
                   <span>Probability: <strong className="text-success">{res.probability}%</strong></span>
                   <span>{res.expectedRoi}x ROI</span>
                 </div>
+                <div className="text-[9px] uppercase text-warning">Predicted outcome</div>
+                {res.risk && <div className="text-[10px] text-secondaryText">Risk: {res.risk}</div>}
+                {res.requiredAction && <div className="text-[10px] text-secondaryText truncate" title={res.requiredAction}>{res.requiredAction}</div>}
               </Card>
             ))}
           </div>
@@ -329,11 +394,11 @@ export default function SimulatorPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-secondaryText">Affected Transactions:</span>
-                <span className="text-primaryText">1,284 Transactions</span>
+                <span className="text-primaryText">{payment ? `Payment #${payment.id}` : 'No payment selected'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-secondaryText">Policy Check:</span>
-                <span className="text-success font-bold">✓ Policy v2.4 Compliant</span>
+                <span className="text-warning font-bold">PREDICTED ONLY</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-secondaryText">AI Confidence:</span>
@@ -364,14 +429,23 @@ export default function SimulatorPage() {
                 size="sm"
                 onClick={() => {
                   setIsExecuteModalOpen(false);
+                  if (payment) router.push(`/recovery/${payment.id}`);
                 }}
               >
-                Execute
+                Open Recovery Case
               </Button>
             </div>
           </div>
         )}
       </Modal>
     </div>
+  );
+}
+
+export default function SimulatorPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-secondaryText">Loading simulator...</div>}>
+      <SimulatorContent />
+    </Suspense>
   );
 }

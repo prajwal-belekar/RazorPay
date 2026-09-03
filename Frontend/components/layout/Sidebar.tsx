@@ -37,6 +37,8 @@ const iconMap: Record<string, React.ElementType> = {
   Settings,
 };
 
+const LinkComponent = Link as React.ComponentType<any>;
+
 export function Sidebar({
   isMobileOpen,
   setIsMobileOpen,
@@ -104,12 +106,12 @@ export function Sidebar({
                 </h4>
               )}
               {section.items.map((item) => {
-                const IconComponent = iconMap[item.icon] || LayoutDashboard;
+                const IconComponent = (iconMap[item.icon] || LayoutDashboard) as React.ComponentType<{ className?: string }>;
                 const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
                 return (
                   // @ts-ignore Next typed routes
-                  <Link key={item.href} href={item.href as any} onClick={() => setIsMobileOpen?.(false)} className={cn("group relative flex items-center gap-3 rounded-md px-2.5 py-2 text-xs font-medium transition-all", isActive ? "bg-surface-elevated text-primaryText border border-border/80 shadow-subtle" : "text-secondaryText hover:bg-surface/60 hover:text-primaryText")} title={isCollapsed ? item.label : undefined}>
+                  <LinkComponent key={item.href} href={item.href as any} onClick={() => setIsMobileOpen?.(false)} className={cn("group relative flex items-center gap-3 rounded-md px-2.5 py-2 text-xs font-medium transition-all", isActive ? "bg-surface-elevated text-primaryText border border-border/80 shadow-subtle" : "text-secondaryText hover:bg-surface/60 hover:text-primaryText")} title={isCollapsed ? item.label : undefined}>
                     <IconComponent
                       className={cn(
                         "h-4 w-4 shrink-0 transition-colors",
@@ -127,7 +129,7 @@ export function Sidebar({
                     {isActive && (
                       <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-1 rounded-r bg-ai" />
                     )}
-                  </Link>
+                  </LinkComponent>
                 );
               })}
             </div>

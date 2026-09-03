@@ -8,8 +8,35 @@ export interface Payment {
   confidence: number | null;
   decision_source: string | null;
   recovery_status: string | null;
+  payment_status?: string | null;
   retry_count: number;
+  previous_recovery_attempts?: number;
   created_at: string | null;
+  payment_method?: string | null;
+  // AI Action Firewall / Merchant Governance Guard fields
+  firewall_decision?: string | null;
+  firewall_reason?: string | null;
+  firewall_policy_version?: string | null;
+  firewall_checks?: ActionFirewallCheck[];
+  firewall_evaluated_at?: string | null;
+  proof?: {
+    proof_id: string;
+    transaction_id: string;
+    razorpay_payment_id?: string | null;
+    recovery_action: string;
+    recovery_timestamp: string | null;
+    recovered_amount: number;
+    ai_confidence: number | null;
+    policy_version: string | null;
+    firewall_decision: string | null;
+    execution_id: number;
+    proof_payload: Record<string, unknown>;
+    proof_hash: string;
+    proof_status: 'VERIFIED' | 'NOT_VERIFIED';
+    tx_hash?: string | null;
+    block_number?: number | null;
+    network?: string | null;
+  } | null;
 }
 
 export type PaymentMethod = 'UPI' | 'Cards' | 'Net Banking' | 'Wallet' | 'N/A';
@@ -104,12 +131,20 @@ export interface BlockchainProof {
   strategy: StrategyType;
   policyVersion: string;
   proofHash: string;
-  policyHash: string;
+  policyHash?: string;
   timestamp: string;
-  blockNumber: number;
+  blockNumber?: number | null;
   verified: boolean;
-  txHash: string;
-  network: string;
+  txHash?: string | null;
+  network?: string | null;
+  razorpayPaymentId?: string | null;
+  recoveryAction?: string;
+  recoveryTimestamp?: string | null;
+  aiConfidence?: number | null;
+  firewallDecision?: string | null;
+  executionId?: number;
+  proofPayload?: Record<string, unknown> | null;
+  proofStatus?: 'VERIFIED' | 'NOT_VERIFIED';
 }
 
 export interface RecoveryCase {
@@ -175,7 +210,7 @@ export interface Anomaly {
 }
 
 export interface SimulationConfig {
-  revenueAtRisk: number;
+  paymentId: number;
   horizonDays: number;
   retryCount: number;
   selectedStrategies: StrategyType[];
@@ -189,6 +224,10 @@ export interface SimulationResult {
   timeToRecoverHours: number;
   successRateByMethod: Record<PaymentMethod, number>;
   isRecommended?: boolean;
+  risk?: string;
+  requiredAction?: string;
+  reason?: string;
+  predicted?: boolean;
 }
 
 export interface PolicyRule {

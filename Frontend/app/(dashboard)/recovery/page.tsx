@@ -11,7 +11,7 @@ import { useLiveDemo } from '@/hooks/use-live-demo';
 
 export default function RecoveryPage() {
   const demoState = useLiveDemo();
-  const { cases, isLoading } = useRecoveryEngine();
+  const { cases, isLoading, connectionStatus } = useRecoveryEngine();
 
   const stats = useMemo(() => {
     const atRisk = cases.filter((c) => c.status !== 'Recovered');
@@ -46,6 +46,29 @@ export default function RecoveryPage() {
           <RotateCcw className="h-3.5 w-3.5" />
           <span>Run Recovery Demo</span>
         </Button>
+        <div
+          className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[10px] font-mono ${
+            connectionStatus === 'loading' || isLoading
+              ? 'border-border/60 bg-surface text-secondaryText'
+              : connectionStatus === 'live'
+              ? 'border-success-border/50 bg-success-bg/10 text-success'
+              : 'border-danger-border/50 bg-danger-bg/10 text-danger'
+          }`}
+        >
+          {connectionStatus === 'loading' || isLoading ? (
+            <>
+              <span>LOADING</span>
+            </>
+          ) : connectionStatus === 'live' ? (
+            <>
+              <span>LIVE</span>
+            </>
+          ) : (
+            <>
+              <span>BACKEND OFFLINE</span>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Summary KPI Bar */}

@@ -47,7 +47,7 @@ export function RecoveryPassportCard({ recoveryCase }: { recoveryCase: RecoveryC
               </div>
             </div>
 
-            {proof ? (
+            {proof?.proofStatus === 'VERIFIED' ? (
               <Badge variant="success" size="sm">
                 <CheckCircle2 className="h-3 w-3" />
                 VERIFIED PROOF
@@ -96,24 +96,26 @@ export function RecoveryPassportCard({ recoveryCase }: { recoveryCase: RecoveryC
 
             <div>
               <span className="text-[10px] text-mutedText block">Blockchain Ledger</span>
-              <span className={proof ? 'text-ai-light font-bold' : 'text-mutedText'}>
-                {proof ? '✓ VERIFIED' : 'NOT VERIFIED'}
+              <span className={proof?.proofStatus === 'VERIFIED' ? 'text-ai-light font-bold' : 'text-mutedText'}>
+                {proof?.proofStatus === 'VERIFIED' ? '✓ VERIFIED' : 'NOT VERIFIED'}
               </span>
             </div>
 
             <div>
               <span className="text-[10px] text-mutedText block">Proof Hash</span>
               <span className="text-secondaryText text-[11px]">
-                {proof ? truncateHash(proof.proofHash || '') : 'Not available'}
+                {proof?.proofHash ? truncateHash(proof.proofHash) : 'Not available'}
               </span>
             </div>
           </div>
 
           <div className="flex items-center justify-between border-t border-border/60 pt-3">
             <span className="text-[10px] text-mutedText">
-              {proof
-                ? `${proof.network} • Block #${proof.blockNumber}`
-                : 'No on-chain proof generated for this payment yet.'}
+              {proof?.proofHash
+                ? proof.proofStatus === 'VERIFIED'
+                  ? `${proof.network || 'Configured network'}${proof.blockNumber ? ` • Block #${proof.blockNumber}` : ''}`
+                  : 'Local cryptographic proof available; blockchain verification is not configured.'
+                : 'No proof generated for this payment.'}
             </span>
 
             <div className="flex items-center gap-2">
@@ -125,7 +127,7 @@ export function RecoveryPassportCard({ recoveryCase }: { recoveryCase: RecoveryC
                 Trust Center
                 <ArrowRight className="h-3 w-3 ml-1" />
               </Button>
-              {proof && (
+              {proof?.proofHash && (
                 <Button
                   variant="ai"
                   size="sm"
@@ -157,10 +159,12 @@ export function RecoveryPassportCard({ recoveryCase }: { recoveryCase: RecoveryC
           <div className="rounded-lg bg-success-bg border border-success-border p-3 text-center space-y-1">
             <div className="flex items-center justify-center gap-1.5 text-success font-bold text-sm">
               <CheckCircle2 className="h-4 w-4" />
-              <span>✓ Cryptographically Verified</span>
+              <span>{proof?.proofStatus === 'VERIFIED' ? '✓ Cryptographically Verified' : 'Local Proof Hash'}</span>
             </div>
             <p className="text-[11px] text-secondaryText">
-              Decision hash matches on-chain smart contract ledger record.
+              {proof?.proofStatus === 'VERIFIED'
+                ? 'Decision hash matches the configured blockchain record.'
+                : 'Decision hash is available locally. No blockchain confirmation was recorded.'}
             </p>
           </div>
 
@@ -172,7 +176,7 @@ export function RecoveryPassportCard({ recoveryCase }: { recoveryCase: RecoveryC
             <div className="flex justify-between">
               <span className="text-secondaryText">Decision Hash:</span>
               <div className="flex items-center gap-1 text-ai-light">
-                <span>{truncateHash(proof?.proofHash || '0x8a91...72fc')}</span>
+                <span>{proof?.proofHash ? truncateHash(proof.proofHash) : 'Not available'}</span>
                 <button onClick={copyHash} className="hover:text-white">
                   {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
                 </button>
@@ -181,16 +185,16 @@ export function RecoveryPassportCard({ recoveryCase }: { recoveryCase: RecoveryC
             <div className="flex justify-between">
               <span className="text-secondaryText">Policy Hash:</span>
               <span className="text-secondaryText">
-                {truncateHash(proof?.policyHash || '0x91ac...82de')}
+                {proof?.policyVersion || 'Not available'}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-secondaryText">Block Number:</span>
-              <span className="text-primaryText">#{proof?.blockNumber || 18294021}</span>
+                <span className="text-primaryText">{proof?.blockNumber ? `#${proof.blockNumber}` : 'Not recorded'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-secondaryText">Recorded At:</span>
-              <span className="text-primaryText">{formatDate(proof?.timestamp || new Date().toISOString(), { includeTime: true })}</span>
+              <span className="text-primaryText">{proof?.timestamp ? formatDate(proof.timestamp, { includeTime: true }) : 'Not available'}</span>
             </div>
           </div>
 

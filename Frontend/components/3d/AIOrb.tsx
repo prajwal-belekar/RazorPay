@@ -94,7 +94,7 @@ function InnerCore({ stage, prefersReducedMotion }: { stage: RecoveryStage; pref
         <mesh ref={ringRef} rotation={[Math.PI / 3, 0, 0]}>
           <torusGeometry args={[1.5, 0.03, 16, 64]} />
           <meshStandardMaterial
-            color={stage === 'verified' ? '#6366F1' : stage === 'recovered' ? '#10B981' : '#8B5CF6'}
+            color={stage === 'verified' ? '#6366F1' : '#8B5CF6'}
             emissive={stage === 'verified' ? '#6366F1' : '#8B5CF6'}
             emissiveIntensity={0.6}
           />

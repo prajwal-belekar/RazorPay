@@ -14,13 +14,43 @@ import {
   CartesianGrid,
 } from 'recharts';
 
+function CustomTooltip({ active, payload, label }: any) {
+  if (active && payload && payload.length) {
+    return (
+      <div className="rounded-lg border border-border bg-surface-elevated p-3 shadow-card text-xs space-y-1.5 font-sans">
+        <p className="font-semibold text-primaryText border-b border-border/60 pb-1">{label}</p>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-warning flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-warning"></span>
+            Revenue At Risk
+          </span>
+          <span className="font-mono font-semibold text-primaryText">
+            {formatCurrency(payload[0]?.value || 0, { compact: true })}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-success flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-success"></span>
+            Revenue Recovered
+          </span>
+          <span className="font-mono font-semibold text-primaryText">
+            {formatCurrency(payload[1]?.value || 0, { compact: true })}
+          </span>
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
 export function RevenueOverview() {
   const { cases, isLoading, dataSource } = useRecoveryEngine();
   const [period, setPeriod] = useState<'7D' | '30D' | '90D'>('7D');
+  const [nowRef] = useState(() => Date.now());
 
   const chartData = useMemo(() => {
     const days = period === '7D' ? 7 : period === '30D' ? 30 : 90;
-    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const cutoff = nowRef - days * 24 * 60 * 60 * 1000;
 
     const byDay = new Map<string, { revenueAtRisk: number; revenueRecovered: number }>();
 
@@ -44,7 +74,7 @@ export function RevenueOverview() {
         revenueAtRisk: v.revenueAtRisk,
         revenueRecovered: v.revenueRecovered,
       }));
-  }, [cases, period]);
+  }, [cases, period, nowRef]);
 
   const totals = useMemo(() => {
     return chartData.reduce(
@@ -55,35 +85,6 @@ export function RevenueOverview() {
       { revenueAtRisk: 0, revenueRecovered: 0 }
     );
   }, [chartData]);
-
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="rounded-lg border border-border bg-surface-elevated p-3 shadow-card text-xs space-y-1.5 font-sans">
-          <p className="font-semibold text-primaryText border-b border-border/60 pb-1">{label}</p>
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-warning flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-warning"></span>
-              Revenue At Risk
-            </span>
-            <span className="font-mono font-semibold text-primaryText">
-              {formatCurrency(payload[0]?.value || 0, { compact: true })}
-            </span>
-          </div>
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-success flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-success"></span>
-              Revenue Recovered
-            </span>
-            <span className="font-mono font-semibold text-primaryText">
-              {formatCurrency(payload[1]?.value || 0, { compact: true })}
-            </span>
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
 
   return (
     <Card className="p-0">

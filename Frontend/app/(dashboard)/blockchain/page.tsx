@@ -87,7 +87,7 @@ export default function BlockchainPage() {
             <h1 className="text-2xl font-bold tracking-tight text-primaryText">
               Recovery Trust Center
             </h1>
-            <Badge variant="success">Polygon Devnet Active</Badge>
+            <Badge variant="outline">Blockchain Verification Not Configured</Badge>
           </div>
           <p className="text-xs sm:text-sm text-secondaryText mt-1">
             Cryptographically verifiable proof of autonomous recovery decisions.
@@ -147,7 +147,7 @@ export default function BlockchainPage() {
         <Card className="p-4">
           <span className="text-xs text-secondaryText font-medium">Verified Recoveries</span>
           <div className="text-xl font-bold font-mono text-success mt-1">{proofs.length}</div>
-          <span className="text-[10px] text-mutedText">100% On-chain Hash Match</span>
+            <span className="text-[10px] text-mutedText">Local proofs only</span>
         </Card>
 
         <Card className="p-4">
@@ -155,7 +155,7 @@ export default function BlockchainPage() {
           <div className="text-xl font-bold font-mono text-success mt-1">
             {formatCurrency(proofs.reduce((acc, p) => acc + p.amount, 0))}
           </div>
-          <span className="text-[10px] text-mutedText">Recorded in Ledger</span>
+            <span className="text-[10px] text-mutedText">Not recorded on-chain</span>
         </Card>
 
         <Card className="p-4">
@@ -166,11 +166,11 @@ export default function BlockchainPage() {
 
         <Card className="p-4">
           <span className="text-xs text-secondaryText font-medium">Ledger Network Status</span>
-          <div className="text-sm font-bold font-mono text-success mt-1 flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full bg-success" />
-            Polygon Devnet
+            <div className="text-sm font-bold font-mono text-mutedText mt-1 flex items-center gap-1">
+            <span className="h-2 w-2 rounded-full bg-mutedText" />
+            Not configured
           </div>
-          <span className="text-[10px] text-mutedText">Block #18294021</span>
+          <span className="text-[10px] text-mutedText">No transaction or block data</span>
         </Card>
       </div>
 
