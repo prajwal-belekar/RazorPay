@@ -40,6 +40,8 @@ class Payment(Base):
 
     gateway = Column(String, nullable=True)
 
+    currency = Column(String, nullable=True, default="INR")
+
     webhook_received_at = Column(DateTime(timezone=True), nullable=True)
 
     # Recovery-engine fields (nullable to preserve existing records)
@@ -133,6 +135,16 @@ class RecoveryExecution(Base):
         server_default=func.now(),
     )
 
+    # Execution mode tracking: DRY_RUN (default/safe) or LIVE.
+    # Always defaults to DRY_RUN; LIVE is never the default.
+    execution_mode = Column(String, nullable=True)
+
+    # True when the action was simulated rather than executed against a provider.
+    simulated = Column(Boolean, nullable=True)
+
+    # Human-readable message describing the simulation outcome.
+    result_message = Column(Text, nullable=True)
+
     # Local proof fields; chain fields remain NULL until a real integration confirms them.
     proof_payload = Column(JSON, nullable=True)
 
@@ -220,4 +232,4 @@ class FirewallAuditLog(Base):
     evaluation_timestamp = Column(
         DateTime(timezone=True),
         server_default=func.now(),
-    )
+    )

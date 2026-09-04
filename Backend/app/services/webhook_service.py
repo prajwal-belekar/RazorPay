@@ -13,6 +13,7 @@ lifecycle webhooks. For every verified event it:
 No secrets are ever persisted or logged.
 """
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -21,6 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Payment, RazorpayWebhook
+from app.services.recovery_orchestrator import process_failed_payment
 from app.services.websocket_manager import broadcast_payment_update
 from app.database import SessionLocal
 
@@ -232,6 +234,41 @@ async def _sync_payment(
         payment.recovery_status = ATTRIBUTED
 
 
+async def _trigger_recovery_pipeline(payment: Payment, db: Session | None = None) -> dict:
+    """Safely trigger the AI -> Firewall -> DRY_RUN recovery pipeline.
+
+    The pipeline is best-effort: any failure is logged and swallowed so the
+    webhook can still return HTTP 200 to Razorpay. Never exposes secrets or
+    stack traces to the caller.
+    """
+    from app.database import SessionLocal as _SessionLocal
+
+    owns_session = db is None
+    session = db or _SessionLocal()
+    try:
+        # Bound pipeline latency so a slow/missing Ollama never blocks webhook ack.
+        result = await asyncio.wait_for(
+            process_failed_payment(payment.id, session),
+            timeout=30.0,
+        )
+        logger.info(
+            "Recovery pipeline triggered for payment %d: eligible=%s, firewall=%s, execution=%s",
+            payment.id,
+            result.get("eligible"),
+            (result.get("firewall") or {}).get("approved"),
+            (result.get("execution") or {}).get("status"),
+        )
+        return result
+    except asyncio.TimeoutError:
+        logger.warning("Recovery pipeline timed out for payment %d", payment.id)
+    except Exception:
+        logger.exception("Recovery pipeline failed for payment %d", payment.id)
+    finally:
+        if owns_session:
+            session.close()
+    return {}
+
+
 async def process_razorpay_webhook(raw_body: str, db: Session) -> dict:
     """Process a verified Razorpay webhook body.
 
@@ -297,11 +334,19 @@ async def process_razorpay_webhook(raw_body: str, db: Session) -> dict:
         event_obj.processed = True
         db.commit()
 
+        # Trigger the recovery pipeline for failed payments (AI -> Firewall ->
+        # DRY_RUN execution). Best-effort and never blocks the webhook ack.
+        # payment.captured / order.paid / payment.authorized do NOT trigger it.
+        pipeline_result = None
+        if event == "payment.failed" and payment is not None:
+            pipeline_result = await _trigger_recovery_pipeline(payment)
+
         result = {
             "event": event,
             "status": "PROCESSED",
             "processed": True,
             "payment_id": payment.id if payment is not None else None,
+            "pipeline": pipeline_result,
         }
     except IntegrityError:
         # Another concurrent delivery won the race - treat as duplicate.

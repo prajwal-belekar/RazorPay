@@ -36,11 +36,12 @@ export function ActionFirewallCard({ firewall }: { firewall: FirewallResult }) {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-          {firewall.checks.map((check) => {
+          {firewall.checks.map((check, index) => {
             const isPassed = check.status === 'PASSED';
+            const key = check.id ?? `${check.name}-${index}`;
             return (
               <div
-                key={check.id}
+                key={key}
                 className={`flex items-start gap-2.5 p-2.5 rounded-lg border text-xs ${
                   isPassed
                     ? 'border-success-border/40 bg-surface/40 text-primaryText'

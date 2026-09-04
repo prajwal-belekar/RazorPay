@@ -1,4 +1,4 @@
-import { Payment, RecoveryCase, PaymentMethod, RecoveryStatus, StrategyType } from '@/types';
+import { Payment, RecoveryCase, PaymentMethod, RecoveryStatus, StrategyType, PaymentPassport, SyncRazorpayResult } from '@/types';
 import { apiFetch } from './client';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
@@ -61,7 +61,7 @@ export function paymentToRecoveryCase(payment: Payment): RecoveryCase {
 
   return {
     id: String(payment.id),
-    transactionId: `Payment #${payment.id}`,
+    transactionId: payment.razorpay_payment_id || `Payment #${payment.id}`,
     customer: {
       id: `PAY-${payment.id}`,
       name: payment.customer_type || 'N/A',
@@ -196,5 +196,24 @@ export async function isBackendAvailable(): Promise<boolean> {
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+export async function getRecoveryPassport(paymentId: number): Promise<PaymentPassport | null> {
+  try {
+    const result = await apiFetch<PaymentPassport>(`/api/recovery/passport/${paymentId}`);
+    return result;
+  } catch {
+    return null;
+  }
+}
+export async function syncRazorpayPayments(count: number = 20): Promise<SyncRazorpayResult | null> {
+  try {
+    const result = await apiFetch<SyncRazorpayResult>(`/api/payments/sync-razorpay?count=${count}`, {
+      method: 'POST',
+    });
+    return result;
+  } catch {
+    return null;
   }
 }

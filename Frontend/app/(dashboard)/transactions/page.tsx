@@ -16,12 +16,22 @@ import { useRouter } from 'next/navigation';
 
 export default function TransactionsPage() {
   const router = useRouter();
-  const { transactions, isLoading, connectionStatus, backendError } = useRecoveryEngine();
+  const { transactions, isLoading, connectionStatus, backendError, syncRazorpay } = useRecoveryEngine();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [methodFilter, setMethodFilter] = useState('ALL');
   const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
   const [webhookTxnId, setWebhookTxnId] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+      await syncRazorpay();
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const filteredTxns = transactions.filter((t) => {
     const matchesStatus = statusFilter === 'ALL' || t.status === statusFilter;
@@ -191,6 +201,17 @@ export default function TransactionsPage() {
             </>
           )}
         </div>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleSync}
+          isLoading={isSyncing}
+          className="text-xs font-mono"
+        >
+          <RotateCcw className="h-3.5 w-3.5 mr-1" />
+          Sync Razorpay
+        </Button>
       </div>
       </div>
 

@@ -30,6 +30,24 @@ OLLAMA_URL = _get("OLLAMA_URL", "http://localhost:11434/api/generate")
 OLLAMA_MODEL = _get("OLLAMA_MODEL", "")
 OLLAMA_TIMEOUT = float(_get("OLLAMA_TIMEOUT", "120"))
 
+# Recovery execution safety switch.
+# RECOVERY_DRY_RUN defaults to TRUE and is the SAFE default: while enabled the
+# Recovery Execution Engine NEVER calls Razorpay for a real recovery operation —
+# it always returns a simulated result. Only an operator intentionally setting
+# RECOVERY_DRY_RUN=false (with Razorpay TEST/SANDBOX credentials) enables the
+# real RETRY path. It must never default to false.
+RECOVERY_DRY_RUN = _get("RECOVERY_DRY_RUN", "true")
+
+
+def recovery_dry_run_enabled() -> bool:
+    """Return True when the safety switch is enabled (default).
+
+    Enabled unless the operator explicitly sets RECOVERY_DRY_RUN to a false
+    value (false/0/no/off). Any unset or unknown value keeps DRY_RUN on.
+    """
+    value = os.getenv("RECOVERY_DRY_RUN", "true").strip().lower()
+    return value not in ("false", "0", "no", "off")
+
 
 def razorpay_configured() -> bool:
     """Return True when real Razorpay TEST credentials are present."""
@@ -52,6 +70,23 @@ def razorpay_webhook_configured() -> bool:
     )
 
 
+# Polygon Amoy testnet blockchain configuration.
+# All four MUST be set in Backend/.env for on-chain proof submission.
+POLYGON_AMOY_RPC_URL = _get("POLYGON_RPC_URL", "")
+BLOCKCHAIN_PRIVATE_KEY = _get("BLOCKCHAIN_PRIVATE_KEY", "")
+RECOVERY_PROOF_CONTRACT_ADDRESS = _get("RECOVERY_PROOF_CONTRACT_ADDRESS", "")
+POLYGON_CHAIN_ID = int(_get("POLYGON_CHAIN_ID", "80002"))
+
+
+def blockchain_configured() -> bool:
+    """Return True when Polygon Amoy blockchain credentials are present."""
+    return bool(
+        POLYGON_AMOY_RPC_URL
+        and BLOCKCHAIN_PRIVATE_KEY
+        and RECOVERY_PROOF_CONTRACT_ADDRESS
+    )
+
+
 def get_razorpay_public_config() -> dict:
     """Return safe public Razorpay status without leaking any secrets."""
     configured = razorpay_configured()
@@ -70,5 +105,7 @@ def get_razorpay_public_config() -> dict:
         "mode": "test" if "test" in current_key_id.lower() else ("live" if configured else "none"),
         "key_id_preview": key_id_preview,
         "currency": "INR",
+        "blockchain_configured": blockchain_configured(),
+        "blockchain_chain_id": POLYGON_CHAIN_ID,
     }
 

@@ -11,6 +11,7 @@ recovery action.
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -22,7 +23,16 @@ from app.services.action_executor import (
 )
 from app.services.action_firewall import ActionFirewall, record_firewall_audit
 from app.services.recovery_ai_service import analyze_and_persist_payment
-from app.services.recovery_proof import verify_proof
+from app.services.recovery_execution_service import (
+    BLOCKED,
+    DRY_RUN,
+    SUPPORTED_ACTIONS as EXECUTION_SUPPORTED_ACTIONS,
+    execute_recovery_action as execute_dry_run_action,
+)
+from app.services.blockchain_service import blockchain_service
+from app.services.recovery_orchestrator import process_failed_payment
+from app.services.recovery_passport import build_recovery_passport
+from app.services.recovery_proof import build_proof_payload, hash_proof, verify_proof
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +160,28 @@ def get_recovery_case(payment_id: int, db: Session = Depends(get_db)):
     if payment is None:
         raise HTTPException(status_code=404, detail="Payment not found.")
     return _to_case(payment, db)
+
+
+@router.get("/passport/{payment_id}")
+def get_recovery_passport(payment_id: int, db: Session = Depends(get_db)):
+    """Retrieve the Recovery Passport / audit trail for a payment.
+
+    Composes the persisted AI decision, Action Firewall evaluation, and the
+    latest recovery execution (including HYBRID steps) into one structured,
+    read-only representation for a payment.
+
+    Guarantees:
+      - Returns 404 if the payment does not exist.
+      - Read-only: creates no records, triggers no AI, executes no recovery,
+        and never calls Razorpay or any customer notification channel.
+      - Never exposes secrets, credentials, card data, or customer contact
+        information.
+      - Handles payments with no AI decision / no execution gracefully.
+    """
+    payment = db.query(Payment).filter(Payment.id == payment_id).first()
+    if payment is None:
+        raise HTTPException(status_code=404, detail="Payment not found.")
+    return build_recovery_passport(payment=payment, db=db)
 
 
 @router.post("/analyze/{payment_id}")
@@ -388,3 +420,284 @@ def execute_recovery(payment_id: int, body: ExecuteActionRequest | None = None,
         "duplicate_of": result.get("duplicate_of"),
         "execution": body_safe,
     }
+
+
+# ---------------------------------------------------------------------------
+# Recovery Execution Engine (DRY-RUN sandbox mode)
+# ---------------------------------------------------------------------------
+
+
+class DryRunExecuteRequest(BaseModel):
+    """Request body for the DRY-RUN execution engine endpoint."""
+
+    action: str | None = None
+    execution_mode: str | None = None
+
+
+@router.post("/execute/{payment_id}")
+def execute_recovery_dry_run(
+    payment_id: int,
+    body: DryRunExecuteRequest | None = None,
+    db: Session = Depends(get_db),
+):
+    """Execute (or simulate) a recovery action in DRY-RUN sandbox mode.
+
+    Flow (mandatory, never bypassed):
+      1. Find payment
+      2. Retrieve persisted AI decision
+      3. Run Action Firewall
+      4. If firewall rejects -> stop, return BLOCKED
+      5. If firewall approves -> simulate the action
+      6. Store execution result in RecoveryExecution table
+      7. Return structured response
+
+    This endpoint NEVER executes real Razorpay operations, charges customers,
+    sends messages, or creates real payment links. Default mode is DRY_RUN.
+    """
+    payment = db.query(Payment).filter(Payment.id == payment_id).first()
+    if payment is None:
+        raise HTTPException(status_code=404, detail=f"Payment {payment_id} not found.")
+
+    # Validate AI decision exists
+    if not payment.recommended_action:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"No AI recovery decision exists for payment {payment_id}. "
+                "Run POST /api/recovery/analyze/{payment_id} first."
+            ),
+        )
+
+    action = (body.action if body and body.action else None)
+    if action and action.upper() not in EXECUTION_SUPPORTED_ACTIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unsupported action '{action}'. "
+                f"Supported: {', '.join(sorted(EXECUTION_SUPPORTED_ACTIONS))}."
+            ),
+        )
+
+    execution_mode = (
+        (body.execution_mode if body and body.execution_mode else None) or DRY_RUN
+    )
+
+    try:
+        result = execute_dry_run_action(
+            payment=payment,
+            action=action,
+            execution_mode=execution_mode,
+            db=db,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    status_code = 200
+    if result.get("status") == BLOCKED:
+        status_code = 403
+    elif result.get("status") == "ALREADY_EXECUTED":
+        status_code = 409
+
+    return JSONResponse(status_code=status_code, content=result)
+
+
+# ---------------------------------------------------------------------------
+# Blockchain Proof Layer
+# ---------------------------------------------------------------------------
+
+
+@router.post("/proof/{payment_id}")
+def submit_recovery_proof(payment_id: int, db: Session = Depends(get_db)):
+    """Submit a deterministic recovery proof hash to the Polygon Amoy blockchain.
+
+    Flow:
+      1. Find the latest SUCCESS execution with a proof_hash for this payment.
+      2. Build the proof payload from execution and payment data.
+      3. Compute a deterministic SHA-256 proof hash.
+      4. Submit the hash to the RecoveryProof smart contract.
+      5. Persist chain_tx_hash, chain_block_number, chain_network onto the execution row.
+      6. Return the submission result.
+
+    Blockchain failures never corrupt PostgreSQL: a FAILED status is stored
+    safely and the existing proof data remains intact.
+    """
+    payment = db.query(Payment).filter(Payment.id == payment_id).first()
+    if payment is None:
+        raise HTTPException(status_code=404, detail=f"Payment {payment_id} not found.")
+
+    # Find the latest successful execution with a proof_hash
+    execution = (
+        db.query(RecoveryExecution)
+        .filter(
+            RecoveryExecution.payment_id == payment_id,
+            RecoveryExecution.status == "SUCCESS",
+            RecoveryExecution.proof_hash.isnot(None),
+        )
+        .order_by(RecoveryExecution.id.desc())
+        .first()
+    )
+    if execution is None:
+        # Fall back to any execution with a proof_hash (e.g. SIMULATED)
+        execution = (
+            db.query(RecoveryExecution)
+            .filter(
+                RecoveryExecution.payment_id == payment_id,
+                RecoveryExecution.proof_hash.isnot(None),
+            )
+            .order_by(RecoveryExecution.id.desc())
+            .first()
+        )
+    if execution is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"No recovery execution with a proof hash found for payment {payment_id}. "
+                "Run POST /api/recovery/execute/{payment_id} first."
+            ),
+        )
+
+    # Rebuild the proof payload deterministically
+    razorpay_pid = payment.razorpay_payment_id or f"pay_internal_{payment.id}"
+    payload = build_proof_payload(
+        transaction_id=f"Payment #{payment.id}",
+        razorpay_payment_id=razorpay_pid,
+        action=execution.action,
+        recovery_timestamp=execution.completed_at or execution.created_at,
+        recovered_amount=payment.amount,
+        ai_confidence=payment.confidence,
+        policy_version=execution.firewall_policy_version,
+        firewall_decision=execution.firewall_decision,
+        execution_id=execution.id,
+    )
+    proof_hash = hash_proof(payload)
+
+    # Check if already submitted to blockchain (idempotent)
+    if execution.chain_tx_hash and execution.proof_status == "ON_CHAIN":
+        return {
+            "payment_id": payment_id,
+            "execution_id": execution.id,
+            "proof_hash": proof_hash,
+            "proof_status": "ON_CHAIN",
+            "chain_tx_hash": execution.chain_tx_hash,
+            "chain_block_number": execution.chain_block_number,
+            "chain_network": execution.chain_network,
+            "already_submitted": True,
+        }
+
+    razorpay_pid_for_chain = razorpay_pid
+    result = blockchain_service.submit_proof(
+        payment_id=razorpay_pid_for_chain,
+        proof_hash=proof_hash,
+    )
+
+    # Persist chain details onto the execution row (non-destructive)
+    execution.proof_payload = payload
+    execution.proof_hash = proof_hash
+    execution.chain_network = f"polygon-amoy"
+
+    if result["submitted"]:
+        execution.proof_status = result["status"]
+        execution.chain_tx_hash = result.get("chain_tx_hash")
+        execution.chain_block_number = result.get("chain_block_number")
+    else:
+        execution.proof_status = result["status"]
+        logger.warning(
+            "Blockchain proof submission did not succeed for payment %d: %s",
+            payment_id,
+            result.get("reason"),
+        )
+
+    db.commit()
+    db.refresh(execution)
+
+    return {
+        "payment_id": payment_id,
+        "execution_id": execution.id,
+        "proof_payload": payload,
+        "proof_hash": proof_hash,
+        "proof_status": execution.proof_status,
+        "chain_tx_hash": execution.chain_tx_hash,
+        "chain_block_number": execution.chain_block_number,
+        "chain_network": execution.chain_network,
+        "blockchain_result": result,
+    }
+
+
+@router.get("/proof/{payment_id}")
+def get_recovery_proof(payment_id: int, db: Session = Depends(get_db)):
+    """Retrieve the on-chain and local proof for a recovery execution.
+
+    Returns the locally stored proof data and, when the blockchain is
+    configured, the on-chain verification result.
+    """
+    payment = db.query(Payment).filter(Payment.id == payment_id).first()
+    if payment is None:
+        raise HTTPException(status_code=404, detail=f"Payment {payment_id} not found.")
+
+    execution = (
+        db.query(RecoveryExecution)
+        .filter(
+            RecoveryExecution.payment_id == payment_id,
+            RecoveryExecution.proof_hash.isnot(None),
+        )
+        .order_by(RecoveryExecution.id.desc())
+        .first()
+    )
+    if execution is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No recovery proof found for payment {payment_id}.",
+        )
+
+    razorpay_pid = (
+        payment.razorpay_payment_id
+        or execution.proof_payload.get("razorpay_payment_id", "")
+        if execution.proof_payload
+        else ""
+    )
+
+    # Local verification
+    local_valid = verify_proof(execution.proof_payload or {}, execution.proof_hash)
+
+    # On-chain verification (when blockchain is configured)
+    on_chain_result = None
+    if blockchain_service.is_configured and razorpay_pid:
+        on_chain_result = blockchain_service.verify_proof_on_chain(
+            payment_id=razorpay_pid,
+            expected_hash=execution.proof_hash,
+        )
+
+    return {
+        "payment_id": payment_id,
+        "execution_id": execution.id,
+        "proof_payload": execution.proof_payload,
+        "proof_hash": execution.proof_hash,
+        "proof_status": execution.proof_status,
+        "local_verified": local_valid,
+        "on_chain_verification": on_chain_result,
+        "chain_tx_hash": execution.chain_tx_hash,
+        "chain_block_number": execution.chain_block_number,
+        "chain_network": execution.chain_network,
+    }
+
+
+@router.post("/process/{payment_id}")
+async def process_recovery_pipeline(payment_id: int, db: Session = Depends(get_db)):
+    """Run the full recovery pipeline for a payment (manual/development testing).
+
+    Executes the same orchestrator used by the Razorpay webhook:
+
+        payment -> AI Decision -> Action Firewall -> DRY_RUN Execution
+
+    This endpoint NEVER bypasses the AI engine, Action Firewall, or the
+    DRY_RUN execution restriction, and it NEVER calls real Razorpay recovery.
+    """
+    if db.query(Payment).filter(Payment.id == payment_id).first() is None:
+        raise HTTPException(status_code=404, detail=f"Payment {payment_id} not found.")
+
+    try:
+        result = await process_failed_payment(payment_id, db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return result

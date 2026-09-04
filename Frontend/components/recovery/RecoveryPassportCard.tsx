@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
@@ -9,11 +9,47 @@ import { Modal } from '../ui/Modal';
 import { formatCurrency, formatDate, truncateHash } from '@/lib/formatters';
 import { RecoveryCase } from '@/types';
 import { ShieldCheck, CheckCircle2, Lock, ExternalLink, Copy, Check, ArrowRight } from 'lucide-react';
+import { getRecoveryPassport } from '@/lib/api/payments';
+import { PaymentPassport, PassportAIDecision, PassportFirewall, PassportRecovery, PassportHybridStep } from '@/types';
 
 export function RecoveryPassportCard({ recoveryCase }: { recoveryCase: RecoveryCase }) {
   const router = useRouter();
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [passport, setPassport] = useState<PaymentPassport | null>(null);
+  const [isLoadingPassport, setIsLoadingPassport] = useState(false);
+  const [passportError, setPassportError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const paymentIdMatch = recoveryCase.id.match(/^(\d+)/);
+    const paymentId = paymentIdMatch ? Number(paymentIdMatch[1]) : null;
+
+    const setLoading = (loading: boolean) => {
+      setTimeout(() => setIsLoadingPassport(loading), 0);
+    };
+
+    const setError = (error: string | null) => {
+      setTimeout(() => setPassportError(error), 0);
+    };
+
+    setLoading(!paymentId);
+
+    if (!paymentId) {
+      return;
+    }
+
+    setError(null);
+    getRecoveryPassport(paymentId)
+      .then((data) => {
+        setPassport(data);
+        setLoading(false);
+      })
+      .catch(() => {
+        setPassport(null);
+        setLoading(false);
+        setError('Passport data unavailable');
+      });
+  }, [recoveryCase.id]);
 
   const proof = recoveryCase.proof;
 
@@ -51,6 +87,11 @@ export function RecoveryPassportCard({ recoveryCase }: { recoveryCase: RecoveryC
               <Badge variant="success" size="sm">
                 <CheckCircle2 className="h-3 w-3" />
                 VERIFIED PROOF
+              </Badge>
+            ) : proof?.proofStatus === 'ON_CHAIN' ? (
+              <Badge variant="ai" size="sm">
+                <Lock className="h-3 w-3" />
+                ON-CHAIN PROOF
               </Badge>
             ) : (
               <Badge variant="outline" size="sm">
@@ -109,13 +150,66 @@ export function RecoveryPassportCard({ recoveryCase }: { recoveryCase: RecoveryC
             </div>
           </div>
 
+          {/* Passport integration data */}
+          {isLoadingPassport && (
+            <div className="text-xs text-mutedText py-3">
+              Loading passport...
+            </div>
+          )}
+          {passport && !isLoadingPassport && passport.payment && (
+            <div className="space-y-3 py-3">
+              {/* HYBRID Steps */}
+              {passport.payment.hybrid_steps && passport.payment.hybrid_steps.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
+                  {passport.payment.hybrid_steps.map((step, idx) => (
+                    <div key={idx} className="text-[8px]">
+                      {step.action} {step.status}
+                      {step.recovered && <span className="text-[8px] text-success">✓</span>}
+                      {step.passed_firewall && <span className="text-[8px] text-ai-light">✓</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* DRY_RUN badge */}
+              {passport.payment.recovery && passport.payment.recovery.simulated && (
+                <Badge variant="outline" size="sm" className="self-center">
+                  DRY_RUN • SIMULATED
+                </Badge>
+              )}
+              {/* Provider reference */}
+              {passport.payment.recovery && (
+                <div className="text-[8px] text-ai-light">
+                  {passport.payment.recovery.provider_reference_id
+                    ? `Provider Ref: ${passport.payment.recovery.provider_reference_id}`
+                    : 'Provider: —'}
+                </div>
+              )}
+            </div>
+          )}
+          {!passport && !isLoadingPassport && (
+            <div className="text-xs text-mutedText py-3">
+              Passport data unavailable
+            </div>
+          )}
           <div className="flex items-center justify-between border-t border-border/60 pt-3">
             <span className="text-[10px] text-mutedText">
-              {proof?.proofHash
-                ? proof.proofStatus === 'VERIFIED'
-                  ? `${proof.network || 'Configured network'}${proof.blockNumber ? ` • Block #${proof.blockNumber}` : ''}`
+              {proof?.proofStatus === 'ON_CHAIN' && proof?.txHash ? (
+                <a
+                  href={`https://www.oklink.com/amoy/tx/${proof.txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-ai-light underline decoration-dotted hover:text-white"
+                >
+                  Polygon Amoy TX {truncateHash(proof.txHash)}
+                  {proof.blockNumber ? ` • Block #${proof.blockNumber}` : ''}
+                </a>
+              ) : proof?.proofHash ? (
+                proof.proofStatus === 'VERIFIED'
+                  ? `${proof.network || 'Polygon Amoy'}${proof.blockNumber ? ` • Block #${proof.blockNumber}` : ''}`
                   : 'Local cryptographic proof available; blockchain verification is not configured.'
-                : 'No proof generated for this payment.'}
+              ) : (
+                'No proof generated for this payment.'
+              )}
             </span>
 
             <div className="flex items-center gap-2">

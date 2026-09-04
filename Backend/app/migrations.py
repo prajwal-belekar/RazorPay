@@ -17,6 +17,7 @@ _PAYMENT_ADD_COLUMNS = [
     ("payment_status", "VARCHAR"),
     ("error_code", "VARCHAR"),
     ("gateway", "VARCHAR"),
+    ("currency", "VARCHAR"),
     ("webhook_received_at", "TIMESTAMP WITH TIME ZONE"),
     ("recovery_score", "FLOAT"),
     ("payment_method", "VARCHAR"),
@@ -43,6 +44,9 @@ _EXECUTION_ADD_COLUMNS = [
     ("chain_tx_hash", "VARCHAR"),
     ("chain_block_number", "INTEGER"),
     ("chain_network", "VARCHAR"),
+    ("execution_mode", "VARCHAR"),
+    ("simulated", "BOOLEAN"),
+    ("result_message", "TEXT"),
 ]
 
 

@@ -13,6 +13,12 @@ export interface Payment {
   previous_recovery_attempts?: number;
   created_at: string | null;
   payment_method?: string | null;
+  razorpay_payment_id?: string | null;
+  razorpay_order_id?: string | null;
+  currency?: string | null;
+  error_code?: string | null;
+  gateway?: string | null;
+  payment_timestamp?: string | null;
   // AI Action Firewall / Merchant Governance Guard fields
   firewall_decision?: string | null;
   firewall_reason?: string | null;
@@ -309,4 +315,76 @@ export interface AIResponse<T = unknown> {
   latencyMs: number;
   model: string;
   timestamp: string;
+}
+
+export interface PassportAIDecision {
+  action: string;
+  confidence: number;
+  recovery_probability: number;
+  expected_recovery: number;
+  risk_level: string;
+  reason: string;
+  decision_source: string;
+  ai_decision_at: string;
+}
+
+export interface PassportFirewallCheck {
+  name: string;
+  passed: boolean;
+}
+
+export interface PassportFirewall {
+  approved: boolean;
+  action: string;
+  risk_level: string;
+  policy_version: string;
+  reason: string;
+  checks: PassportFirewallCheck[];
+  evaluated_at: string;
+}
+
+export interface PassportRecovery {
+  execution_id: number;
+  action: string;
+  execution_mode: string;
+  status: string;
+  simulated: boolean;
+  provider: string | null;
+  provider_reference_id: string | null;
+  result_message: string;
+  error: string | null;
+  started_at: string;
+  completed_at: string | null;
+}
+
+export interface PassportHybridStep {
+  action: string;
+  status: string;
+  recovered: boolean;
+  passed_firewall: boolean;
+  reason: string;
+}
+
+export interface PaymentPassport {
+  payment: {
+    payment_id: number;
+    failure_reason: string;
+    payment_status: string;
+    recovery_status: string;
+    ai_decision: PassportAIDecision;
+    firewall: PassportFirewall;
+    recovery: PassportRecovery;
+    hybrid_steps: PassportHybridStep[];
+    timestamp: string;
+  };
+}
+
+export interface SyncRazorpayResult {
+  success: boolean;
+  source: string;
+  fetched: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  failed: number;
 }

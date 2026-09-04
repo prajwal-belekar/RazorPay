@@ -21,7 +21,7 @@ import { mockRecoveryCases } from '@/lib/mock/recovery';
 import { mockTransactions } from '@/lib/mock/transactions';
 import { mockDashboardMetrics, mockRevenueLeakAnomaly } from '@/lib/mock/dashboard';
 import { mockMerchantDNA } from '@/lib/mock/analytics';
-import { getPayments, paymentsToRecoveryCases, computeMetrics, executeRecovery } from '@/lib/api/payments';
+import { getPayments, paymentsToRecoveryCases, computeMetrics, executeRecovery, syncRazorpayPayments } from '@/lib/api/payments';
 import confetti from 'canvas-confetti';
 
 export type ConnectionStatus = 'live' | 'offline' | 'loading';
@@ -55,6 +55,7 @@ interface RecoveryEngineContextType {
   goToStep: (index: number) => void;
   executeRecoveryCase: (id: string, strategy: string) => Promise<boolean>;
   updatePolicyThresholds: (maxRetries: number, minConfidence: number, autoCap: number) => void;
+  syncRazorpay: () => Promise<boolean>;
 }
 
 const RecoveryEngineContext = createContext<RecoveryEngineContextType | undefined>(undefined);
@@ -85,17 +86,18 @@ function processPaymentsData(payments: Payment[]) {
       : 'N/A';
     
     return {
-      id: `Payment #${p.id}`,
+      id: p.razorpay_payment_id || `Payment #${p.id}`,
       customerId: `PAY-${p.id}`,
       customerName: p.customer_type || 'N/A',
       amount: p.amount,
-      currency: 'INR',
+      currency: p.currency || 'INR',
       paymentMethod: paymentMethod as PaymentMethod,
       status: (p.recovery_status || '').toUpperCase() === 'SUCCESS' ? ('Recovered' as const) : ('Pending' as const),
       failureReason: p.failure_reason as any,
-      createdAt: p.created_at || '',
+      failureCode: p.error_code || undefined,
+      createdAt: p.payment_timestamp || p.created_at || '',
       updatedAt: p.created_at || '',
-      gateway: 'Razorpay',
+      gateway: p.gateway || 'Razorpay',
       recoveryId: `Payment #${p.id}`,
     };
   });
@@ -495,6 +497,26 @@ export function RecoveryEngineProvider({ children }: { children: React.ReactNode
     );
   }, []);
 
+  const syncRazorpay = useCallback(async (): Promise<boolean> => {
+    try {
+      const result = await syncRazorpayPayments();
+      if (result && result.success) {
+        const payments = await getPayments();
+        if (Array.isArray(payments) && payments.length > 0) {
+          const { realCases, transactions: txns, metrics: computedMetrics } = processPaymentsData(payments);
+          setCases(realCases);
+          setTransactions(txns);
+          setMetrics(computedMetrics);
+          setDataSource('live');
+        }
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }, []);
+
   return (
     <RecoveryEngineContext.Provider
       value={{
@@ -526,6 +548,7 @@ export function RecoveryEngineProvider({ children }: { children: React.ReactNode
         goToStep,
         executeRecoveryCase,
         updatePolicyThresholds,
+        syncRazorpay,
       }}
     >
       {children}

@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import Payment, RazorpayWebhook
+from app.models import FirewallAuditLog, Payment, RazorpayWebhook, RecoveryExecution
 from app.services.razorpay_service import reset_client
 
 
@@ -33,6 +33,15 @@ class TestRazorpayWebhookIntegration(unittest.TestCase):
     def _cleanup_test_data(self):
         db = SessionLocal()
         try:
+            pay_ids = db.query(Payment.id).filter(
+                Payment.razorpay_payment_id.like("pay_test_%")
+            )
+            db.query(RecoveryExecution).filter(
+                RecoveryExecution.payment_id.in_(pay_ids)
+            ).delete(synchronize_session=False)
+            db.query(FirewallAuditLog).filter(
+                FirewallAuditLog.payment_id.in_(pay_ids)
+            ).delete(synchronize_session=False)
             db.query(RazorpayWebhook).filter(
                 RazorpayWebhook.razorpay_payment_id.like("pay_test_%")
             ).delete(synchronize_session=False)
