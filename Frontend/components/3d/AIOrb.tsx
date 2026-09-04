@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Sphere, MeshWobbleMaterial } from '@react-three/drei';
 import * as THREE from 'three';
 import { RecoveryStage, getStageMetadata } from '@/lib/recoveryStages';
+import { useHydrated, usePrefersReducedMotion } from '@/hooks/use-hydrated';
 
 function InnerCore({ stage, prefersReducedMotion }: { stage: RecoveryStage; prefersReducedMotion: boolean }) {
   const meshRef = useRef<THREE.Mesh>(null!);
@@ -145,18 +146,10 @@ export function AIOrb({
   stage?: RecoveryStage;
   className?: string;
 }) {
-  const [mounted, setMounted] = useState(false);
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const mounted = useHydrated();
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   const activeStage: RecoveryStage = stage || (state as RecoveryStage) || 'idle';
-
-  useEffect(() => {
-    setMounted(true);
-    if (typeof window !== 'undefined') {
-      const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-      setPrefersReducedMotion(mediaQuery.matches);
-    }
-  }, []);
 
   if (!mounted) {
     return (

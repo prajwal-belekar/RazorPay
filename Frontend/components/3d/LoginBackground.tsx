@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Sphere, Box, Icosahedron } from '@react-three/drei';
 import * as THREE from 'three';
+import { useHydrated } from '@/hooks/use-hydrated';
 
 function BackgroundFloatingScene() {
   const groupRef = useRef<THREE.Group>(null!);
@@ -48,8 +49,7 @@ function BackgroundFloatingScene() {
 }
 
 export function LoginBackground3D() {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useHydrated();
 
   if (!mounted) return null;
 

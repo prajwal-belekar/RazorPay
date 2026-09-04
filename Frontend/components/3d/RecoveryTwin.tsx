@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Sphere, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import { StrategyType } from '@/types';
+import { useHydrated } from '@/hooks/use-hydrated';
 
 interface StrategyNodeData {
   type: StrategyType;
@@ -88,8 +89,7 @@ export function RecoveryTwin3D({
   onSelectStrategy?: (strat: StrategyType) => void;
   className?: string;
 }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useHydrated();
 
   if (!mounted) return null;
 

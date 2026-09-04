@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Line, Sphere } from '@react-three/drei';
 import * as THREE from 'three';
 import { RecoveryStage, getVisualStageIndex, VISUAL_LIFECYCLE_STEPS } from '@/lib/recoveryStages';
+import { useHydrated } from '@/hooks/use-hydrated';
 
 const pipelineNodes = [
   { name: 'DETECT', pos: [-4.0, 0.1, 0] as [number, number, number], color: '#F59E0B' },
@@ -91,8 +92,7 @@ export function RevenuePipeline3D({
   stage?: RecoveryStage;
   className?: string;
 }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useHydrated();
 
   const visualStep = stage !== undefined ? getVisualStageIndex(stage) : (activeStep ?? 0);
 

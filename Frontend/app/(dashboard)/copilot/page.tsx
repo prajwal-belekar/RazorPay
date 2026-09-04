@@ -41,7 +41,7 @@ export default function CopilotPage() {
     if (!textToSend.trim()) return;
 
     const userMsg: CopilotMessage = {
-      id: `user-${Date.now()}`,
+      id: `user-${messages.length}`,
       sender: 'user',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       text: textToSend,

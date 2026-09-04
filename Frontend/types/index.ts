@@ -150,7 +150,7 @@ export interface BlockchainProof {
   firewallDecision?: string | null;
   executionId?: number;
   proofPayload?: Record<string, unknown> | null;
-  proofStatus?: 'VERIFIED' | 'NOT_VERIFIED';
+  proofStatus?: 'VERIFIED' | 'NOT_VERIFIED' | 'ON_CHAIN';
 }
 
 export interface RecoveryCase {

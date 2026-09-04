@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Box, Line } from '@react-three/drei';
 import * as THREE from 'three';
+import { useHydrated } from '@/hooks/use-hydrated';
 
 const blocks = [
   { name: 'Decision', pos: [-2.4, 0, 0] as [number, number, number], color: '#8B5CF6' },
@@ -63,8 +64,7 @@ export function BlockchainProof3D({
 }: {
   className?: string;
 }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useHydrated();
 
   if (!mounted) return null;
 

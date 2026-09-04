@@ -15,6 +15,7 @@ export function RawWebhookModal({
   transactionId?: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const [createdAt] = useState(() => Math.floor(Date.now() / 1000) - 300);
 
   const rawWebhookJson = {
     entity: "event",
@@ -47,11 +48,11 @@ export function RawWebhookModal({
           error_source: "bank",
           error_step: "payment_authentication",
           error_reason: "bank_technical_error",
-          created_at: Math.floor(Date.now() / 1000) - 300
+          created_at: createdAt
         }
       }
     },
-    created_at: Math.floor(Date.now() / 1000) - 300
+    created_at: createdAt
   };
 
   const jsonString = JSON.stringify(rawWebhookJson, null, 2);
